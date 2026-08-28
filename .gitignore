@@ -42,6 +42,9 @@ wandb/
 *.pth
 *.onnx
 
+# Fixture video cache (full downloads, too large for git)
+tests/fixtures/clips/.cache/
+
 # Superpowers brainstorm sessions
 .superpowers/
 
