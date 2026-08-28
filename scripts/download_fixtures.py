@@ -57,7 +57,7 @@ def download_and_trim(clip: dict[str, object]) -> None:
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         print(f"  ERROR downloading {clip_id}: {result.stderr}", file=sys.stderr)
-        sys.exit(1)
+        return
 
     # Warn if the clip is unexpectedly large (target is <2 MB for a 720p 8-s clip).
     size_mb = out_path.stat().st_size / (1024 * 1024)

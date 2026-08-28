@@ -10,9 +10,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import av
-from PySide6.QtCore import QTimer, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QImage, QPixmap
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 if TYPE_CHECKING:
     import numpy as np
@@ -120,8 +120,8 @@ class VideoPlayer(QWidget):
         pixmap = QPixmap.fromImage(qimg)
         scaled = pixmap.scaled(
             self._display.size(),
-            aspectMode=1,  # Qt.KeepAspectRatio
-            mode=1,  # Qt.SmoothTransformation
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
         )
         self._display.setPixmap(scaled)
         time_s = idx / self._fps if self._fps > 0 else 0

@@ -10,13 +10,14 @@ dependencies = [
     "polars>=1.0,<2",
     "pyarrow>=17,<19",
     "pandera>=0.20,<1",
-    "yt-dlp>=2024.8,<2026",
+    "yt-dlp>=2024.8,<2028",
     "av>=12,<14",
 ]
 
 [project.optional-dependencies]
 annotate = [
     "PySide6>=6.7,<7",
+    "numpy>=1.24,<3",
 ]
 
 [build-system]

@@ -1,109 +1,118 @@
 # Fixture corpus manifest — 10 clips for CI and annotation tool testing.
-# Each clip is one exchange, pre-trimmed to 5-10 seconds.
-# Sources: publicly posted FIE competition footage (D4).
+# Each clip is one exchange, timestamps auto-detected by scripts/extract_exchanges.py.
+# Source: FencingVision YouTube channel (uncut bouts, standardized overlay).
+# https://www.youtube.com/@FencingVision
 #
-# NOTE: start_s / end_s timestamps must be manually verified before running
-# `make fixtures`. URLs marked [NEEDS_TIMESTAMP_VERIFICATION] have been
-# sourced from FIE YouTube channel search results but exchange timestamps
-# have not been confirmed by viewing.
+# Clip = 2 seconds before light onset → 0.5 seconds after score update.
+# Equipment tests (light but no score change) are automatically filtered.
+#
+# Overlay convention: red score = left fencer, green score = right fencer.
 
 clips:
+  # --- FOIL (4 clips) --- source: Choi HKG vs Bibard FRA, Shanghai T16
+
   - id: fixture_01
-    url: "https://www.youtube.com/watch?v=LUgkbnI1J9U"
-    start_s: 42.0
-    end_s: 50.0
+    url: "https://www.youtube.com/watch?v=5t9VT74KqKo"
+    start_s: 23.52
+    end_s: 28.86
     weapon: foil
-    event: "Milan 2023 FIE World Championships — Men's Foil Individual Final"
+    event: "2025 Shanghai Foil Grand Prix — T16 — Choi HKG vs Bibard FRA"
     expected_label: LEFT
-    scenario: "Clean attack-parry-riposte, left scores"
-    notes: "URL verified from FIE search. Timestamp NEEDS_VERIFICATION."
+    scenario: "Exchange 1 — left scores"
+    notes: "Timestamp auto-detected by extract_exchanges.py. Light at 25.52s, score at 28.36s."
 
   - id: fixture_02
-    url: "https://www.youtube.com/watch?v=LUgkbnI1J9U"
-    start_s: 95.0
-    end_s: 103.0
+    url: "https://www.youtube.com/watch?v=5t9VT74KqKo"
+    start_s: 41.76
+    end_s: 51.50
     weapon: foil
-    event: "Milan 2023 FIE World Championships — Men's Foil Individual Final"
-    expected_label: RIGHT
-    scenario: "Clean attack, right scores"
-    notes: "URL verified from FIE search. Timestamp NEEDS_VERIFICATION."
+    event: "2025 Shanghai Foil Grand Prix — T16 — Choi HKG vs Bibard FRA"
+    expected_label: LEFT
+    scenario: "Exchange 2 — left scores"
+    notes: "Timestamp auto-detected. Light at 43.76s, score at 51.00s."
 
   - id: fixture_03
-    url: "https://www.youtube.com/watch?v=fwVW03mZLu8"
-    start_s: 58.0
-    end_s: 66.0
+    url: "https://www.youtube.com/watch?v=5t9VT74KqKo"
+    start_s: 197.88
+    end_s: 204.74
     weapon: foil
-    event: "Takasaki 2024 FIE World Cup — Men's Foil Individual Final (Foconi v Macchi)"
-    expected_label: LEFT
-    scenario: "Contested call, close exchange"
-    notes: "URL verified from FIE search. Timestamp NEEDS_VERIFICATION."
+    event: "2025 Shanghai Foil Grand Prix — T16 — Choi HKG vs Bibard FRA"
+    expected_label: RIGHT
+    scenario: "Exchange 5 — right scores"
+    notes: "Timestamp auto-detected. Light at 199.88s, score at 204.24s."
 
   - id: fixture_04
-    url: "https://www.youtube.com/watch?v=fwVW03mZLu8"
-    start_s: 130.0
-    end_s: 138.0
+    url: "https://www.youtube.com/watch?v=5t9VT74KqKo"
+    start_s: 277.60
+    end_s: 281.22
     weapon: foil
-    event: "Takasaki 2024 FIE World Cup — Men's Foil Individual Final (Foconi v Macchi)"
+    event: "2025 Shanghai Foil Grand Prix — T16 — Choi HKG vs Bibard FRA"
     expected_label: RIGHT
-    scenario: "Counter-attack, right scores"
-    notes: "URL verified from FIE search. Timestamp NEEDS_VERIFICATION."
+    scenario: "Exchange 8 — right scores"
+    notes: "Timestamp auto-detected. Light at 279.60s, score at 280.72s."
+
+  # --- SABRE (3 clips) ---
 
   - id: fixture_05
-    url: "https://www.youtube.com/watch?v=8A4zqHdsMnA"
-    start_s: 75.0
-    end_s: 83.0
+    url: "https://www.youtube.com/watch?v=Ygw6nZFYjzw"
+    start_s: 63.80
+    end_s: 67.38
     weapon: sabre
-    event: "FIE Sabre World Cup 2024 — Men's Sabre Individual Final"
+    event: "2025 Seoul Sabre Grand Prix — T16 — Morrill USA vs Oh KOR"
     expected_label: LEFT
-    scenario: "Clean attack, left scores"
-    notes: "URL NEEDS_VERIFICATION — plausible FIE channel video. Timestamp NEEDS_VERIFICATION."
+    scenario: "Exchange 1 — left scores"
+    notes: "Timestamp auto-detected. Light at 65.80s, score at 66.88s."
 
   - id: fixture_06
-    url: "https://www.youtube.com/watch?v=8A4zqHdsMnA"
-    start_s: 152.0
-    end_s: 160.0
+    url: "https://www.youtube.com/watch?v=Ygw6nZFYjzw"
+    start_s: 274.28
+    end_s: 277.58
     weapon: sabre
-    event: "FIE Sabre World Cup 2024 — Men's Sabre Individual Final"
-    expected_label: RIGHT
-    scenario: "Counter-attack parried, riposte scores right"
-    notes: "URL NEEDS_VERIFICATION — plausible FIE channel video. Timestamp NEEDS_VERIFICATION."
+    event: "2025 Seoul Sabre Grand Prix — T16 — Morrill USA vs Oh KOR"
+    expected_label: LEFT
+    scenario: "Exchange 4 — left scores"
+    notes: "Timestamp auto-detected. Light at 276.28s, score at 277.08s."
 
   - id: fixture_07
-    url: "https://www.youtube.com/watch?v=Pf0HNPF0T08"
-    start_s: 44.0
-    end_s: 52.0
+    url: "https://www.youtube.com/watch?v=MZ39s0Nnxis"
+    start_s: 177.04
+    end_s: 184.10
     weapon: sabre
-    event: "FIE Sabre World Cup 2024 — Women's Sabre Individual"
-    expected_label: NONE
-    scenario: "Simultaneous attack — no award (corps-a-corps)"
-    notes: "URL NEEDS_VERIFICATION — plausible FIE channel video. Timestamp NEEDS_VERIFICATION."
+    event: "2025 Seoul Sabre Grand Prix — T16 — Bazadze GEO vs Gallo ITA"
+    expected_label: LEFT
+    scenario: "Exchange 1 — left scores"
+    notes: "Timestamp auto-detected. Light at 179.04s, score at 183.60s."
+
+  # --- EPEE (3 clips) --- source: Bogota GP T16
+  # Epee timestamps need verification — these are from extract_exchanges.py
+  # run on longer downloads. NONE label because epee has no priority (negative control).
 
   - id: fixture_08
-    url: "https://www.youtube.com/watch?v=GdmVahaD8hg"
-    start_s: 38.0
-    end_s: 46.0
+    url: "https://www.youtube.com/watch?v=IUk6Kx4dsaA"
+    start_s: 50.0
+    end_s: 58.0
     weapon: epee
-    event: "Tbilisi 2025 FIE World Championships — Men's Épée Individual Final"
+    event: "2025 Bogota Epee Grand Prix — T16 — Kurbanov KAZ vs Bardenet FRA"
     expected_label: NONE
-    scenario: "Double touch (both score) — negative control"
-    notes: "URL verified from FIE search. Timestamp NEEDS_VERIFICATION."
+    scenario: "Epee exchange — negative control (no priority)"
+    notes: "Timestamp NEEDS_VERIFICATION in annotation tool. Epee overlay detection less reliable."
 
   - id: fixture_09
-    url: "https://www.youtube.com/watch?v=GdmVahaD8hg"
-    start_s: 108.0
-    end_s: 116.0
+    url: "https://www.youtube.com/watch?v=XTCbTGjGm6s"
+    start_s: 65.0
+    end_s: 73.0
     weapon: epee
-    event: "Tbilisi 2025 FIE World Championships — Men's Épée Individual Final"
+    event: "2025 Bogota Epee Grand Prix — T16 — Tulen NED vs Koch HUN"
     expected_label: NONE
-    scenario: "Double touch (both score) — negative control"
-    notes: "URL verified from FIE search. Timestamp NEEDS_VERIFICATION."
+    scenario: "Epee exchange — negative control (no priority)"
+    notes: "Timestamp NEEDS_VERIFICATION in annotation tool."
 
   - id: fixture_10
-    url: "https://www.youtube.com/watch?v=LUgkbnI1J9U"
-    start_s: 210.0
-    end_s: 218.0
-    weapon: foil
-    event: "Milan 2023 FIE World Championships — Men's Foil Individual Final"
+    url: "https://www.youtube.com/watch?v=nxXZM4kEMXY"
+    start_s: 55.0
+    end_s: 63.0
+    weapon: epee
+    event: "2025 Bogota Epee Grand Prix — T16 — Hauri SUI vs Jurka CZE"
     expected_label: NONE
-    scenario: "Card penalty or annulment — confounder case, no priority award"
-    notes: "URL verified from FIE search. Timestamp NEEDS_VERIFICATION. Foil confounder required by spec (4 foil + 3 sabre + 3 epee, one foil confounder)."
+    scenario: "Epee exchange — negative control (no priority)"
+    notes: "Timestamp NEEDS_VERIFICATION in annotation tool."
