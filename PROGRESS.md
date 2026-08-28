@@ -2,7 +2,7 @@
 
 > Single source of truth for phase ownership and progress.
 > Updated by the `/save` command. Read by `/start`.
-> Phases are defined in CLAUDE.md §8 and the PRD.
+> Phases are defined in CLAUDE.md section 8 and the PRD.
 
 **Last updated:** 2026-08-28T03:45:00Z
 
@@ -54,12 +54,12 @@ Track B (GPU):       └─→ P4b (independent, GPU-gated)
   - [x] CI green on an empty pipeline
   - [x] `make test` passes, including property tests on a stub rule engine
   - [ ] Annotation tool labels a fixture clip end to end → valid `annotations.parquet`
-  - [ ] `profile/entries/a1-fencing-referee.md` created with every §15 measure pre-written as empty checkboxes
+  - [ ] `profile/entries/a1-fencing-referee.md` created with every PRD section 15 measure pre-written as empty checkboxes
   - [ ] Row added to `reference/entry-placement.json`
   - [ ] Faculty-sponsor email sent (YCRC / NSF ACCESS)
   - [ ] Corpus acquisition started
 - **Steps:**
-  - [x] Set up repo structure per §11 layout
+  - [x] Set up repo structure per PRD section 11 layout
   - [x] Configure uv, pyproject.toml, lock file
   - [x] Set up pre-commit (ruff + mypy --strict)
   - [x] Create Makefile with all documented targets
@@ -72,7 +72,7 @@ Track B (GPU):       └─→ P4b (independent, GPU-gated)
   - [x] Build exchange auto-extraction pipeline (scripts/extract_exchanges.py)
   - [x] Document FencingVision as primary source (data/manifests/source_channels.yaml)
   - [ ] Verify fixture clips in annotation tool and label calls
-  - [ ] Create profile entry with §15 measures
+  - [ ] Create profile entry with PRD section 15 measures
   - [ ] Add row to entry-placement.json
   - [ ] Draft and send faculty-sponsor email
   - [ ] Start corpus acquisition (background)
@@ -99,7 +99,7 @@ Track B (GPU):       └─→ P4b (independent, GPU-gated)
   - DEFERRED: Sabre/epee clip re-detection and trimming — needs wifi for downloading source videos (~150-200MB each at ~115 KB/s was impractical).
   - DEFERRED: Annotation tool verification and labeling — blocked on correct sabre/epee clips.
 - **Session log — 2026-08-27/28:**
-  - BUILT: Full P0 scaffold — pyproject.toml, all src/a1 subpackages, Parquet schemas (§11.4), Hydra config skeleton, Makefile, CI, pre-commit, README with attribution, LICENSE (Apache-2.0), DATA_STATEMENT.md, EVALUATION_PREREGISTRATION.md stub
+  - BUILT: Full P0 scaffold — pyproject.toml, all src/a1 subpackages, Parquet schemas (PRD section 11.4), Hydra config skeleton, Makefile, CI, pre-commit, README with attribution, LICENSE (Apache-2.0), DATA_STATEMENT.md, EVALUATION_PREREGISTRATION.md stub
   - BUILT: Apparatus firewall (src/a1/apparatus/firewall.py) with real validation logic and 10 leakage tests that fail the build
   - BUILT: Stub rule engine with one real rule (established attack → priority, FIE t.56) and non-vacuous swap-equivariance property tests
   - BUILT: PoseEstimator protocol + stub (no MM deps for Apple Silicon compat)
@@ -122,7 +122,7 @@ Track B (GPU):       └─→ P4b (independent, GPU-gated)
   - DECISION: decord dropped — no maintained arm64 macOS wheels. PyAV only.
   - LEARNED: T0 labels (tens of thousands) are fully automatic via score-delta oracle. T2 action labels (~1500) are for explanation/evaluation, not for training the priority predictor. The model works without action labels; explanations don't.
   - LEARNED: The FencingVision overlay touch signal is a colored line (red/green/white) that appears ABOVE the name bar, spanning the fencer's half of the screen. Red = left valid touch, green = right valid touch, white = off-target. Both red+green = double touch.
-  - DEFERRED: Profile entry (profile/entries/a1-fencing-referee.md) — needs build-plan.md §15 template
+  - DEFERRED: Profile entry (profile/entries/a1-fencing-referee.md) — needs build-plan.md PRD section 15 template
   - DEFERRED: entry-placement.json — external file
   - DEFERRED: Faculty sponsor email — not a code artifact
   - DEFERRED: Two-panel crop view, blade keypoint annotation, blind relabeling mode — P4a/R7
@@ -196,7 +196,7 @@ Track B (GPU):       └─→ P4b (independent, GPU-gated)
   - [ ] All five split protocols reported (S-clip, S-bout, S-athlete, S-event, S-both)
   - [ ] Temporal split reported
   - [ ] Épée control lands at chance (if not, leakage — stop everything)
-  - [ ] Ablation matrix (§10.4) completed
+  - [ ] Ablation matrix (PRD section 10.4) completed
   - [ ] All numbers reported as mean ± std over seeds [0,1,2,3,4]
   - [ ] Statistical protocol: bootstrap CIs, McNemar, Wilcoxon
   - [ ] viz.attention run and reviewed
@@ -352,7 +352,7 @@ Track B (GPU):       └─→ P4b (independent, GPU-gated)
   - [ ] Hard-case benchmark curated
   - [ ] Human ceiling measured and reported as band on accuracy axes
   - [ ] Failure taxonomy compared against human error distribution
-  - [ ] Leakage audit (§10.6) run before lockbox opens
+  - [ ] Leakage audit (PRD section 10.6) run before lockbox opens
   - [ ] EVALUATION_PREREGISTRATION.md predates first lockbox access
   - [ ] Lockbox evaluated (once, final, pre-registered)
   - [ ] Full public release: benchmark, code, weights, protocol
