@@ -50,6 +50,7 @@ warn_unused_configs = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 markers = [
     "leakage: apparatus firewall and data leakage tests",
     "integration: end-to-end pipeline tests on fixture corpus",
