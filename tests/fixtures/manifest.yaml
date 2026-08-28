@@ -3,7 +3,7 @@
 # Source: FencingVision YouTube channel (uncut bouts, standardized overlay).
 # https://www.youtube.com/@FencingVision
 #
-# Clip = 2 seconds before light onset → 0.5 seconds after score update.
+# Clip = 3 seconds before light onset → 5 seconds after light onset.
 # Equipment tests (light but no score change) are automatically filtered.
 #
 # Overlay convention: red score = left fencer, green score = right fencer.
@@ -13,43 +13,43 @@ clips:
 
   - id: fixture_01
     url: "https://www.youtube.com/watch?v=5t9VT74KqKo"
-    start_s: 23.52
-    end_s: 28.86
+    start_s: 11.32
+    end_s: 19.32
     weapon: foil
     event: "2025 Shanghai Foil Grand Prix — T16 — Choi HKG vs Bibard FRA"
-    expected_label: LEFT
-    scenario: "Exchange 1 — left scores"
-    notes: "Timestamp auto-detected by extract_exchanges.py. Light at 25.52s, score at 28.36s."
+    expected_label: RIGHT
+    scenario: "Exchange 1 — right scores (Bibard)"
+    notes: "Re-detected 2026-08-28. Light at 14.32s, clip = light-3s to light+5s."
 
   - id: fixture_02
     url: "https://www.youtube.com/watch?v=5t9VT74KqKo"
-    start_s: 41.76
-    end_s: 51.50
+    start_s: 84.44
+    end_s: 92.44
     weapon: foil
     event: "2025 Shanghai Foil Grand Prix — T16 — Choi HKG vs Bibard FRA"
     expected_label: LEFT
-    scenario: "Exchange 2 — left scores"
-    notes: "Timestamp auto-detected. Light at 43.76s, score at 51.00s."
+    scenario: "Exchange 3 — left scores (Choi)"
+    notes: "Re-detected 2026-08-28. Light at 87.44s, clip = light-3s to light+5s."
 
   - id: fixture_03
     url: "https://www.youtube.com/watch?v=5t9VT74KqKo"
-    start_s: 197.88
-    end_s: 204.74
+    start_s: 186.20
+    end_s: 194.20
     weapon: foil
     event: "2025 Shanghai Foil Grand Prix — T16 — Choi HKG vs Bibard FRA"
     expected_label: RIGHT
-    scenario: "Exchange 5 — right scores"
-    notes: "Timestamp auto-detected. Light at 199.88s, score at 204.24s."
+    scenario: "Exchange 8 — right scores (Bibard)"
+    notes: "Re-detected 2026-08-28. Light at 189.20s, clip = light-3s to light+5s."
 
   - id: fixture_04
     url: "https://www.youtube.com/watch?v=5t9VT74KqKo"
-    start_s: 277.60
-    end_s: 281.22
+    start_s: 107.80
+    end_s: 115.80
     weapon: foil
     event: "2025 Shanghai Foil Grand Prix — T16 — Choi HKG vs Bibard FRA"
-    expected_label: RIGHT
-    scenario: "Exchange 8 — right scores"
-    notes: "Timestamp auto-detected. Light at 279.60s, score at 280.72s."
+    expected_label: LEFT
+    scenario: "Exchange 5 — left scores (Choi)"
+    notes: "Re-detected 2026-08-28. Light at 110.80s, clip = light-3s to light+5s."
 
   # --- SABRE (3 clips) ---
 

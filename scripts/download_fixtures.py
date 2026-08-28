@@ -65,10 +65,10 @@ def trim_clip(source: Path, start_s: float, duration_s: float, out_path: Path) -
     cmd = [
         "ffmpeg",
         "-y",
-        "-ss",
-        str(start_s),
         "-i",
         str(source),
+        "-ss",
+        str(start_s),
         "-t",
         str(duration_s),
         "-c:v",

@@ -263,10 +263,10 @@ def main() -> None:
             cmd = [
                 "ffmpeg",
                 "-y",
-                "-ss",
-                str(ex.clip_start_s),
                 "-i",
                 video_path,
+                "-ss",
+                str(ex.clip_start_s),
                 "-t",
                 str(duration),
                 "-c:v",
