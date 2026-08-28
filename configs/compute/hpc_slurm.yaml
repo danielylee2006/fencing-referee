@@ -1,0 +1,4 @@
+# HPC cluster via SLURM.
+accelerator: gpu
+devices: 1
+partition: gpu

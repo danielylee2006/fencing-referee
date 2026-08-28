@@ -1,0 +1,4 @@
+# Temporal split evaluation configuration.
+# See PRD §9.4 for split definitions.
+protocol: temporal
+n_folds: 5

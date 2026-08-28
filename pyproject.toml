@@ -1,0 +1,57 @@
+[project]
+name = "a1-fencing-referee"
+version = "0.0.1"
+description = "Right-of-way referee for fencing — research repository and released benchmark"
+requires-python = "==3.11.*"
+license = "Apache-2.0"
+dependencies = [
+    "hydra-core>=1.3,<2",
+    "omegaconf>=2.3,<3",
+    "polars>=1.0,<2",
+    "pyarrow>=17,<19",
+    "pandera>=0.20,<1",
+    "yt-dlp>=2024.8,<2026",
+    "av>=12,<14",
+]
+
+[project.optional-dependencies]
+annotate = [
+    "PySide6>=6.7,<7",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/a1"]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8,<9",
+    "hypothesis>=6.100,<7",
+    "ruff>=0.5,<1",
+    "mypy>=1.10,<2",
+    "pre-commit>=3,<4",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 99
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "TCH", "RUF"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "leakage: apparatus firewall and data leakage tests",
+    "integration: end-to-end pipeline tests on fixture corpus",
+    "property: Hypothesis property-based tests",
+]

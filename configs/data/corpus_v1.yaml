@@ -1,0 +1,4 @@
+# Corpus configuration — source manifest and split parameters.
+# Populated at P1 when corpus acquisition begins.
+corpus_root: data/corpus
+manifest: data/manifests/corpus_v1.yaml

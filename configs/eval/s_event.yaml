@@ -1,0 +1,4 @@
+# S-event evaluation configuration.
+# See PRD §9.4 for split definitions.
+protocol: s_event
+n_folds: 5

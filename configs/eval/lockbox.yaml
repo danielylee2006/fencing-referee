@@ -1,0 +1,5 @@
+# Lockbox evaluation configuration.
+# See PRD §9.4 for split definitions.
+protocol: lockbox
+n_folds: 5
+requires_flag: true

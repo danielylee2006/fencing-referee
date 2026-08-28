@@ -1,0 +1,4 @@
+# S-athlete evaluation configuration.
+# See PRD §9.4 for split definitions.
+protocol: s_athlete
+n_folds: 5

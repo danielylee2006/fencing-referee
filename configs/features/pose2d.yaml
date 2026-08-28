@@ -1,0 +1,3 @@
+# Pose 2D feature configuration.
+# Implemented at the stage that produces this feature.
+enabled: true

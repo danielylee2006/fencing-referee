@@ -1,0 +1,3 @@
+# FERA Multi-Dimensional Transformer replication.
+# Implemented at P2+. One baseline model per file (CLAUDE.md §4).
+_target_: a1.models.fera_mdt.FERAMDT

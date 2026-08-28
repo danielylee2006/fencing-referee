@@ -1,0 +1,13 @@
+defaults:
+  - data: corpus_v1
+  - model: prt
+  - training: finetune_gold
+  - eval: s_both
+  - compute: mac_mps
+  - _self_
+
+seed: 0
+seeds: [0, 1, 2, 3, 4]
+run_id: ${now:%Y%m%d_%H%M%S}_${hydra:job.override_dirname}
+lockbox:
+  enabled: false

@@ -1,0 +1,3 @@
+# Local Mac (Apple Silicon / MPS) — the compute baseline (D3).
+accelerator: mps
+devices: 1

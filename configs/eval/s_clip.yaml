@@ -1,0 +1,4 @@
+# S-clip evaluation configuration.
+# See PRD §9.4 for split definitions.
+protocol: s_clip
+n_folds: 5

@@ -1,0 +1,4 @@
+# S-bout evaluation configuration.
+# See PRD §9.4 for split definitions.
+protocol: s_bout
+n_folds: 5

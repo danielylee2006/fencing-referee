@@ -27,6 +27,8 @@ venv/
 # Data (bytes gitignored, manifests committed)
 data/**
 !data/.gitkeep
+!data/manifests/
+!data/manifests/**
 !data/**/*.manifest
 !data/**/*.dvc
 

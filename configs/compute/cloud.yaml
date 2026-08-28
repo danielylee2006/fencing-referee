@@ -1,0 +1,3 @@
+# Cloud compute (Vast.ai, Modal, etc.)
+accelerator: gpu
+devices: 1
