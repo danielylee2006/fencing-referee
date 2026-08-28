@@ -1,5 +1,5 @@
 .PHONY: setup lint test test-unit test-property test-leakage test-integration \
-        corpus label features train eval ablate figures results reproduce
+        fixtures corpus label features train eval ablate figures results reproduce
 
 setup:
 	uv sync --all-extras
@@ -27,6 +27,9 @@ test-leakage:
 
 test-integration:
 	uv run pytest tests/integration -x
+
+fixtures:
+	uv run python scripts/download_fixtures.py
 
 # --- Stubs: implemented in later phases ---
 

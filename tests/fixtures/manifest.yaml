@@ -1,0 +1,109 @@
+# Fixture corpus manifest — 10 clips for CI and annotation tool testing.
+# Each clip is one exchange, pre-trimmed to 5-10 seconds.
+# Sources: publicly posted FIE competition footage (D4).
+#
+# NOTE: start_s / end_s timestamps must be manually verified before running
+# `make fixtures`. URLs marked [NEEDS_TIMESTAMP_VERIFICATION] have been
+# sourced from FIE YouTube channel search results but exchange timestamps
+# have not been confirmed by viewing.
+
+clips:
+  - id: fixture_01
+    url: "https://www.youtube.com/watch?v=LUgkbnI1J9U"
+    start_s: 42.0
+    end_s: 50.0
+    weapon: foil
+    event: "Milan 2023 FIE World Championships — Men's Foil Individual Final"
+    expected_label: LEFT
+    scenario: "Clean attack-parry-riposte, left scores"
+    notes: "URL verified from FIE search. Timestamp NEEDS_VERIFICATION."
+
+  - id: fixture_02
+    url: "https://www.youtube.com/watch?v=LUgkbnI1J9U"
+    start_s: 95.0
+    end_s: 103.0
+    weapon: foil
+    event: "Milan 2023 FIE World Championships — Men's Foil Individual Final"
+    expected_label: RIGHT
+    scenario: "Clean attack, right scores"
+    notes: "URL verified from FIE search. Timestamp NEEDS_VERIFICATION."
+
+  - id: fixture_03
+    url: "https://www.youtube.com/watch?v=fwVW03mZLu8"
+    start_s: 58.0
+    end_s: 66.0
+    weapon: foil
+    event: "Takasaki 2024 FIE World Cup — Men's Foil Individual Final (Foconi v Macchi)"
+    expected_label: LEFT
+    scenario: "Contested call, close exchange"
+    notes: "URL verified from FIE search. Timestamp NEEDS_VERIFICATION."
+
+  - id: fixture_04
+    url: "https://www.youtube.com/watch?v=fwVW03mZLu8"
+    start_s: 130.0
+    end_s: 138.0
+    weapon: foil
+    event: "Takasaki 2024 FIE World Cup — Men's Foil Individual Final (Foconi v Macchi)"
+    expected_label: RIGHT
+    scenario: "Counter-attack, right scores"
+    notes: "URL verified from FIE search. Timestamp NEEDS_VERIFICATION."
+
+  - id: fixture_05
+    url: "https://www.youtube.com/watch?v=8A4zqHdsMnA"
+    start_s: 75.0
+    end_s: 83.0
+    weapon: sabre
+    event: "FIE Sabre World Cup 2024 — Men's Sabre Individual Final"
+    expected_label: LEFT
+    scenario: "Clean attack, left scores"
+    notes: "URL NEEDS_VERIFICATION — plausible FIE channel video. Timestamp NEEDS_VERIFICATION."
+
+  - id: fixture_06
+    url: "https://www.youtube.com/watch?v=8A4zqHdsMnA"
+    start_s: 152.0
+    end_s: 160.0
+    weapon: sabre
+    event: "FIE Sabre World Cup 2024 — Men's Sabre Individual Final"
+    expected_label: RIGHT
+    scenario: "Counter-attack parried, riposte scores right"
+    notes: "URL NEEDS_VERIFICATION — plausible FIE channel video. Timestamp NEEDS_VERIFICATION."
+
+  - id: fixture_07
+    url: "https://www.youtube.com/watch?v=Pf0HNPF0T08"
+    start_s: 44.0
+    end_s: 52.0
+    weapon: sabre
+    event: "FIE Sabre World Cup 2024 — Women's Sabre Individual"
+    expected_label: NONE
+    scenario: "Simultaneous attack — no award (corps-a-corps)"
+    notes: "URL NEEDS_VERIFICATION — plausible FIE channel video. Timestamp NEEDS_VERIFICATION."
+
+  - id: fixture_08
+    url: "https://www.youtube.com/watch?v=GdmVahaD8hg"
+    start_s: 38.0
+    end_s: 46.0
+    weapon: epee
+    event: "Tbilisi 2025 FIE World Championships — Men's Épée Individual Final"
+    expected_label: NONE
+    scenario: "Double touch (both score) — negative control"
+    notes: "URL verified from FIE search. Timestamp NEEDS_VERIFICATION."
+
+  - id: fixture_09
+    url: "https://www.youtube.com/watch?v=GdmVahaD8hg"
+    start_s: 108.0
+    end_s: 116.0
+    weapon: epee
+    event: "Tbilisi 2025 FIE World Championships — Men's Épée Individual Final"
+    expected_label: NONE
+    scenario: "Double touch (both score) — negative control"
+    notes: "URL verified from FIE search. Timestamp NEEDS_VERIFICATION."
+
+  - id: fixture_10
+    url: "https://www.youtube.com/watch?v=LUgkbnI1J9U"
+    start_s: 210.0
+    end_s: 218.0
+    weapon: foil
+    event: "Milan 2023 FIE World Championships — Men's Foil Individual Final"
+    expected_label: NONE
+    scenario: "Card penalty or annulment — confounder case, no priority award"
+    notes: "URL verified from FIE search. Timestamp NEEDS_VERIFICATION. Foil confounder required by spec (4 foil + 3 sabre + 3 epee, one foil confounder)."
