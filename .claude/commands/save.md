@@ -19,6 +19,15 @@ allowed-tools: Read, Edit, Bash(git status *), Bash(git log *), Bash(git diff *)
    - Any new steps discovered during the session that should be added.
    - What remains to be done.
 
+3b. **Write session log.** Scan the full conversation and build a chronological log of everything notable that happened. Categorize each entry:
+   - **BUILT:** Features, components, files created or modified
+   - **BUG:** Problems encountered — what went wrong, what the root cause was, and how it was fixed
+   - **DECISION:** Design choices made during the session, with reasoning
+   - **LEARNED:** Insights, surprises, or things that turned out differently than expected
+   - **DEFERRED:** Work that was planned but intentionally pushed to a later phase
+
+   Be specific and honest. Include failed approaches and wrong assumptions — these are the most valuable entries for future sessions. Each entry should be one line with enough detail that a reader who wasn't in the session understands what happened and why.
+
 4. **Capture git truth.**
    - Run `git status` and `git log --oneline -5`.
    - If there are **uncommitted changes**, warn the engineer and offer to commit them using the `P#: <description>` convention so progress isn't stranded in the working tree.
@@ -35,6 +44,7 @@ allowed-tools: Read, Edit, Bash(git status *), Bash(git log *), Bash(git diff *)
      - **Files touched this session:** list file paths changed/created
      - **Next step:** the single most important thing to do next session
      - **Open questions / gotchas:** any blockers, decisions needed, or tricky issues
+   - Write the **Session log** from step 3b. Append it under the resume context as a bulleted list with category prefixes (BUG:, BUILT:, DECISION:, LEARNED:, DEFERRED:). Each session's log is kept — don't overwrite previous sessions' logs. Separate sessions with a date header.
    - If the phase is fully done (all exit criteria met), set status to `done`.
 
 6. **Update the rest of `PROGRESS.md`.**
