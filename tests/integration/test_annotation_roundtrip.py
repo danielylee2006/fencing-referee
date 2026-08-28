@@ -60,3 +60,13 @@ def test_annotation_store_rejects_invalid_call() -> None:
     store = AnnotationStore(exchange_id="fixture_03", annotator_id="test_user")
     with pytest.raises(ValueError, match="INVALID"):
         store.set_call("INVALID", "high")
+
+
+def test_fixture_gold_labels_valid() -> None:
+    """The committed gold labels pass schema validation."""
+    gold_path = Path("tests/fixtures/fixtures_gold.parquet")
+    if not gold_path.exists():
+        pytest.skip("Gold labels not yet generated — run scripts/create_fixture_gold.py")
+    df = pl.read_parquet(gold_path)
+    validate(df, ANNOTATIONS_SCHEMA, table_name="annotations")
+    assert df.shape[0] == 10
