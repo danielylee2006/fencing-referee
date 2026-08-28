@@ -80,6 +80,7 @@ class LabelPanel(QWidget):
         self._left_actions = QListWidget()
         self._left_actions.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
         self._left_actions.addItems(_FOIL_ACTIONS)
+        self._left_actions.itemSelectionChanged.connect(self._on_actions_selection_changed)
         left_layout.addWidget(self._left_actions)
         left_group.setLayout(left_layout)
         layout.addWidget(left_group)
@@ -90,6 +91,7 @@ class LabelPanel(QWidget):
         self._right_actions = QListWidget()
         self._right_actions.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
         self._right_actions.addItems(_FOIL_ACTIONS)
+        self._right_actions.itemSelectionChanged.connect(self._on_actions_selection_changed)
         right_layout.addWidget(self._right_actions)
         right_group.setLayout(right_layout)
         layout.addWidget(right_group)
@@ -150,6 +152,10 @@ class LabelPanel(QWidget):
             self._on_call_clicked()
             return True
         return False
+
+    def _on_actions_selection_changed(self) -> None:
+        left, right = self.get_actions()
+        self.actions_changed.emit(left, right)
 
     def _on_call_clicked(self) -> None:
         call, conf = self.get_call()

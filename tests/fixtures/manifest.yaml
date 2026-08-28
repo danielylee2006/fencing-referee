@@ -99,11 +99,11 @@ clips:
     notes: "URL verified from FIE search. Timestamp NEEDS_VERIFICATION."
 
   - id: fixture_10
-    url: "https://www.youtube.com/watch?v=GdmVahaD8hg"
-    start_s: 185.0
-    end_s: 193.0
-    weapon: epee
-    event: "Tbilisi 2025 FIE World Championships — Men's Épée Individual Final"
+    url: "https://www.youtube.com/watch?v=LUgkbnI1J9U"
+    start_s: 210.0
+    end_s: 218.0
+    weapon: foil
+    event: "Milan 2023 FIE World Championships — Men's Foil Individual Final"
     expected_label: NONE
-    scenario: "Double touch (both score) — negative control"
-    notes: "URL verified from FIE search. Timestamp NEEDS_VERIFICATION."
+    scenario: "Card penalty or annulment — confounder case, no priority award"
+    notes: "URL verified from FIE search. Timestamp NEEDS_VERIFICATION. Foil confounder required by spec (4 foil + 3 sabre + 3 epee, one foil confounder)."

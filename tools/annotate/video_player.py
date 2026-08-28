@@ -52,7 +52,7 @@ class VideoPlayer(QWidget):
         """Decode all frames into memory. Only suitable for short clips."""
         container = av.open(str(path))
         stream = container.streams.video[0]
-        stream.codec_context.skip_frame = "NONKEY"  # decode all
+        stream.codec_context.skip_frame = "NONE"  # decode all frames, not just keyframes
         stream.thread_type = "AUTO"
 
         self._fps = float(stream.average_rate or 30)
