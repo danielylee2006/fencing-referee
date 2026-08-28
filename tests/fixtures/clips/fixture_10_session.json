@@ -1,0 +1,20 @@
+{
+  "exchange_id": "fixture_10",
+  "annotator_id": "daniellee",
+  "tier": 0,
+  "call": "",
+  "call_confidence": "",
+  "actions_left": [],
+  "actions_right": [],
+  "extension_onset_l": null,
+  "extension_onset_r": null,
+  "tempo_breaks": [],
+  "blade_line_l": null,
+  "blade_line_r": null,
+  "justification_structured": "{}",
+  "justification_text": null,
+  "ambiguity_note": null,
+  "annotation_seconds": 181.2193831249997,
+  "annotated_at": "2026-08-28T22:00:03.839235+00:00",
+  "is_blind_relabel": false
+}

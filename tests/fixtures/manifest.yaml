@@ -13,13 +13,13 @@ clips:
 
   - id: fixture_01
     url: "https://www.youtube.com/watch?v=5t9VT74KqKo"
-    start_s: 11.32
-    end_s: 19.32
+    start_s: 74.52
+    end_s: 85.52
     weapon: foil
     event: "2025 Shanghai Foil Grand Prix — T16 — Choi HKG vs Bibard FRA"
-    expected_label: RIGHT
-    scenario: "Exchange 1 — right scores (Bibard)"
-    notes: "Re-detected 2026-08-28. Light at 14.32s, clip = light-3s to light+5s."
+    expected_label: LEFT
+    scenario: "Exchange 2 — left (Choi) attacks off-target, annuls right's valid touch, no point awarded"
+    notes: "Re-detected 2026-08-28. Light at 77.52s, clip = light-3s to light+8s (extended to capture referee decision). Off-target attack with priority — score unchanged, bout restarts. Replaced original exchange 1 (fencers off-camera)."
 
   - id: fixture_02
     url: "https://www.youtube.com/watch?v=5t9VT74KqKo"
@@ -33,13 +33,13 @@ clips:
 
   - id: fixture_03
     url: "https://www.youtube.com/watch?v=5t9VT74KqKo"
-    start_s: 186.20
-    end_s: 194.20
+    start_s: 206.32
+    end_s: 214.32
     weapon: foil
     event: "2025 Shanghai Foil Grand Prix — T16 — Choi HKG vs Bibard FRA"
     expected_label: RIGHT
-    scenario: "Exchange 8 — right scores (Bibard)"
-    notes: "Re-detected 2026-08-28. Light at 189.20s, clip = light-3s to light+5s."
+    scenario: "Exchange 9 — right scores (Bibard)"
+    notes: "Re-detected 2026-08-28. Light at 209.32s, clip = light-3s to light+5s. Replaced original exchange 8 (blade test with paused clock, not a real exchange)."
 
   - id: fixture_04
     url: "https://www.youtube.com/watch?v=5t9VT74KqKo"
@@ -55,33 +55,33 @@ clips:
 
   - id: fixture_05
     url: "https://www.youtube.com/watch?v=Ygw6nZFYjzw"
-    start_s: 63.80
-    end_s: 67.38
+    start_s: 120.08
+    end_s: 128.08
     weapon: sabre
     event: "2025 Seoul Sabre Grand Prix — T16 — Morrill USA vs Oh KOR"
-    expected_label: LEFT
-    scenario: "Exchange 1 — left scores"
-    notes: "Timestamp auto-detected. Light at 65.80s, score at 66.88s."
+    expected_label: RIGHT
+    scenario: "Exchange 2 — Oh fleches, Morrill parries and ripostes, right scores"
+    notes: "Re-detected 2026-08-28. Light at 123.08s, clip = light-3s to light+5s. Both lights fire (double touch), referee awards RIGHT (parry-riposte has priority over attack)."
 
   - id: fixture_06
     url: "https://www.youtube.com/watch?v=Ygw6nZFYjzw"
-    start_s: 274.28
-    end_s: 277.58
+    start_s: 166.48
+    end_s: 174.48
     weapon: sabre
     event: "2025 Seoul Sabre Grand Prix — T16 — Morrill USA vs Oh KOR"
-    expected_label: LEFT
-    scenario: "Exchange 4 — left scores"
-    notes: "Timestamp auto-detected. Light at 276.28s, score at 277.08s."
+    expected_label: RIGHT
+    scenario: "Exchange 5 — right scores"
+    notes: "Re-detected 2026-08-28. Light at 169.48s, clip = light-3s to light+5s."
 
   - id: fixture_07
     url: "https://www.youtube.com/watch?v=MZ39s0Nnxis"
-    start_s: 177.04
-    end_s: 184.10
+    start_s: 59.68
+    end_s: 67.68
     weapon: sabre
     event: "2025 Seoul Sabre Grand Prix — T16 — Bazadze GEO vs Gallo ITA"
     expected_label: LEFT
-    scenario: "Exchange 1 — left scores"
-    notes: "Timestamp auto-detected. Light at 179.04s, score at 183.60s."
+    scenario: "Exchange 3 — left scores"
+    notes: "Re-detected 2026-08-28. Light at 62.68s, clip = light-3s to light+5s."
 
   # --- EPEE (3 clips) --- source: Bogota GP T16
   # Epee timestamps need verification — these are from extract_exchanges.py
@@ -89,30 +89,30 @@ clips:
 
   - id: fixture_08
     url: "https://www.youtube.com/watch?v=IUk6Kx4dsaA"
-    start_s: 50.0
-    end_s: 58.0
+    start_s: 95.72
+    end_s: 103.72
     weapon: epee
     event: "2025 Bogota Epee Grand Prix — T16 — Kurbanov KAZ vs Bardenet FRA"
     expected_label: NONE
-    scenario: "Epee exchange — negative control (no priority)"
-    notes: "Timestamp NEEDS_VERIFICATION in annotation tool. Epee overlay detection less reliable."
+    scenario: "Exchange 4 — epee negative control (no priority)"
+    notes: "Re-detected 2026-08-28. Light at 98.72s, clip = light-3s to light+5s."
 
   - id: fixture_09
     url: "https://www.youtube.com/watch?v=XTCbTGjGm6s"
-    start_s: 65.0
-    end_s: 73.0
+    start_s: 166.96
+    end_s: 174.96
     weapon: epee
     event: "2025 Bogota Epee Grand Prix — T16 — Tulen NED vs Koch HUN"
     expected_label: NONE
-    scenario: "Epee exchange — negative control (no priority)"
-    notes: "Timestamp NEEDS_VERIFICATION in annotation tool."
+    scenario: "Exchange 2 — epee negative control (no priority)"
+    notes: "Re-detected 2026-08-28. Light at 169.96s, clip = light-3s to light+5s."
 
   - id: fixture_10
     url: "https://www.youtube.com/watch?v=nxXZM4kEMXY"
-    start_s: 55.0
-    end_s: 63.0
+    start_s: 333.96
+    end_s: 341.96
     weapon: epee
     event: "2025 Bogota Epee Grand Prix — T16 — Hauri SUI vs Jurka CZE"
     expected_label: NONE
-    scenario: "Epee exchange — negative control (no priority)"
-    notes: "Timestamp NEEDS_VERIFICATION in annotation tool."
+    scenario: "Exchange 4 — epee negative control (no priority)"
+    notes: "Re-detected 2026-08-28. Light at 336.96s, clip = light-3s to light+5s. Exchanges 1-2 were blade tests (paused clock)."

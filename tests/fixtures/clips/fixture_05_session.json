@@ -1,0 +1,26 @@
+{
+  "exchange_id": "fixture_05",
+  "annotator_id": "daniellee",
+  "tier": 0,
+  "call": "",
+  "call_confidence": "",
+  "actions_left": [
+    "step_forward",
+    "fleche"
+  ],
+  "actions_right": [
+    "parry",
+    "step_backward"
+  ],
+  "extension_onset_l": null,
+  "extension_onset_r": null,
+  "tempo_breaks": [],
+  "blade_line_l": null,
+  "blade_line_r": null,
+  "justification_structured": "{\"weapon\": \"sabre\"}",
+  "justification_text": null,
+  "ambiguity_note": null,
+  "annotation_seconds": 678.4423381669999,
+  "annotated_at": "2026-08-28T22:00:05.549341+00:00",
+  "is_blind_relabel": false
+}
