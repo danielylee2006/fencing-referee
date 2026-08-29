@@ -187,23 +187,17 @@ def trim_clip(source: Path, start_s: float, duration_s: float, out_path: Path) -
     return True
 
 
-def load_clip_frames(clip_path: Path) -> tuple[list[np.ndarray], float]:
-    """Load all frames from a clip. Returns (frames, fps)."""
-    container = av.open(str(clip_path))
-    stream = container.streams.video[0]
-    fps = float(stream.average_rate or 25)
-    frames = [frame.to_ndarray(format="rgb24") for frame in container.decode(video=0)]
-    container.close()
-    return frames, fps
-
 
 def process_video(
     video_id: str, url: str, meta: dict[str, str] | None, playlist_weapon: str
 ) -> list[dict]:
-    """Download video, detect exchanges, trim clips, assess quality, delete video.
+    """Download video, detect exchanges, assess on full video, trim clips.
 
-    Returns a list of exchange entries for the manifest. Rejected exchanges
-    (blade tests, etc.) are not included.
+    The key insight: score changes can take 5-10 seconds after the touch
+    (referee deliberation). We assess quality on the FULL video first to
+    find the exact score change time, then trim clips to include it.
+
+    Returns a list of exchange entries for the manifest.
     """
     weapon = meta["weapon"] if meta else playlist_weapon
 
@@ -213,7 +207,7 @@ def process_video(
         return []
 
     size_mb = video_path.stat().st_size / (1024 * 1024)
-    print(f"    downloaded ({size_mb:.0f} MB), detecting exchanges...")
+    print(f"    downloaded ({size_mb:.0f} MB), detecting touches...")
 
     # Detect exchanges via touch light detection
     exchanges = detect_exchanges(str(video_path))
@@ -222,36 +216,62 @@ def process_video(
         video_path.unlink(missing_ok=True)
         return []
 
-    print(f"    {len(exchanges)} touches found, trimming and assessing...")
+    # Get video fps
+    container = av.open(str(video_path))
+    fps = float(container.streams.video[0].average_rate or 25)
+    container.close()
 
-    # Trim each exchange to a clip, then assess quality
+    print(f"    {len(exchanges)} touches found, assessing quality...")
+
+    # For each exchange: load ~10 seconds of frames around the touch,
+    # assess quality, then trim the final clip.
     CLIPS_DIR.mkdir(parents=True, exist_ok=True)
     exchange_entries = []
     rejected = 0
 
     for j, ex in enumerate(exchanges):
-        clip_name = f"{video_id}_{j + 1:03d}.mp4"
-        clip_path = CLIPS_DIR / clip_name
-        duration = ex.clip_end_s - ex.clip_start_s
+        # Load frames from 3s before touch to 10s after (for score detection)
+        assess_start_s = max(0, ex.light_onset_s - 3.0)
+        assess_end_s = ex.light_onset_s + 10.0
+        assess_frames = _load_frame_range(str(video_path), assess_start_s, assess_end_s)
+
+        if not assess_frames:
+            continue
+
+        # Touch is at 3 seconds into the loaded segment
+        touch_frame_local = int(3.0 * fps)
+        quality = assess_exchange(assess_frames, touch_frame_local, fps, weapon)
+
+        if quality.reject:
+            rejected += 1
+            del assess_frames
+            continue
+
+        # Determine clip boundaries
+        clip_start_s = assess_start_s
+        if quality.score_change and quality.score_change.change_frame >= 0:
+            # Score change frame is relative to assess_frames
+            score_change_s = assess_start_s + quality.score_change.change_frame / fps
+            clip_end_s = score_change_s + 2.0
+        else:
+            clip_end_s = ex.light_onset_s + 5.0
+
+        # Cap clip length at 15 seconds
+        if clip_end_s - clip_start_s > 15.0:
+            clip_end_s = clip_start_s + 15.0
+
+        duration = clip_end_s - clip_start_s
+        del assess_frames
 
         # Trim the clip
+        clip_name = f"{video_id}_{j + 1:03d}.mp4"
+        clip_path = CLIPS_DIR / clip_name
+
         if not clip_path.exists():
-            if not trim_clip(video_path, ex.clip_start_s, duration, clip_path):
+            if not trim_clip(video_path, clip_start_s, duration, clip_path):
                 continue
 
         clip_size = clip_path.stat().st_size / (1024 * 1024)
-
-        # Assess quality: load clip, run score change + clock detection
-        frames, fps = load_clip_frames(clip_path)
-        # Touch is at 3 seconds into the clip (frame 75 at 25fps)
-        touch_frame = int(3.0 * fps)
-        quality = assess_exchange(frames, touch_frame, fps, weapon)
-
-        if quality.reject:
-            # Remove rejected clips from disk
-            clip_path.unlink(missing_ok=True)
-            rejected += 1
-            continue
 
         exchange_entries.append(
             {
@@ -259,14 +279,16 @@ def process_video(
                 "video_id": video_id,
                 "exchange_num": j + 1,
                 "light_onset_s": round(ex.light_onset_s, 2),
-                "clip_start_s": round(ex.clip_start_s, 2),
-                "clip_end_s": round(ex.clip_end_s, 2),
+                "clip_start_s": round(clip_start_s, 2),
+                "clip_end_s": round(clip_end_s, 2),
                 "light_side": ex.side,
                 "label": quality.label,
                 "weapon": weapon,
                 "size_mb": round(clip_size, 1),
                 "flags": quality.flags if quality.flags else [],
-                "score_change_frame": quality.score_change.change_frame if quality.score_change else -1,
+                "score_change_s": round(quality.score_change.change_time_s, 2)
+                if quality.score_change and quality.score_change.change_frame >= 0
+                else None,
             }
         )
 
@@ -277,6 +299,28 @@ def process_video(
     )
 
     return exchange_entries
+
+
+def _load_frame_range(video_path: str, start_s: float, end_s: float) -> list[np.ndarray]:
+    """Load frames from a time range of a video without loading the whole thing."""
+    container = av.open(video_path)
+    stream = container.streams.video[0]
+    fps = float(stream.average_rate or 25)
+
+    # Seek to start
+    start_pts = int(start_s / stream.time_base)
+    container.seek(start_pts, stream=stream)
+
+    frames: list[np.ndarray] = []
+    for frame in container.decode(video=0):
+        t = float(frame.pts * stream.time_base) if frame.pts is not None else 0
+        if t > end_s:
+            break
+        if t >= start_s - 0.5:  # small buffer before start
+            frames.append(frame.to_ndarray(format="rgb24"))
+
+    container.close()
+    return frames
 
 
 def load_existing_manifest() -> dict:
