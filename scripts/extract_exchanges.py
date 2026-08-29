@@ -60,22 +60,46 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
     fps = float(stream.average_rate or 25)
 
     exchanges: list[Exchange] = []
-    light_onset_frame: int | None = None
-    light_onset_side: str = ""
     cooldown_until: int = 0
-
-    # We need a baseline of what the overlay bar looks like (for score-change diffing)
-    prev_bar: np.ndarray | None = None
 
     # Previous frame's strip signals (for transition detection)
     prev_left_red: float | None = None
     prev_left_green: float = 0.0
     prev_right_red: float = 0.0
     prev_right_green: float | None = None
+    # For white: track mean brightness of just the bright-neutral pixels
+    prev_left_white_bright: float = 0.0
+    prev_right_white_bright: float = 0.0
 
-    # Baseline: collect the touch-indicator strip colors from first 50 frames
+    # Baseline: collect the touch-indicator strip from first 50 frames
     baseline_left_strips: list[np.ndarray] = []
     baseline_right_strips: list[np.ndarray] = []
+
+    # Pending touch awaiting second-light check (FIE 300ms lockout window)
+    pending_touch: dict | None = None
+
+    def strip_signal(strip: np.ndarray) -> tuple[float, float, float]:
+        """Compute red, green, and white-bright signal strength in a strip.
+
+        Returns (red_pct, green_pct, white_bright_pct):
+        - red_pct: fraction of pixels where R dominates G by >50
+        - green_pct: fraction of pixels where G dominates R by >50
+        - white_bright_pct: fraction of pixels that are bright (>200)
+          AND neutral (no strong color). The off-target (white) indicator
+          is very bright white; ambient grey overlay is 100-180.
+        """
+        r = strip[:, :, 0].astype(np.float32)
+        g = strip[:, :, 1].astype(np.float32)
+        b = strip[:, :, 2].astype(np.float32)
+        total = strip.shape[0] * strip.shape[1]
+        red_pct = float(np.sum((r - g) > 50)) / total
+        green_pct = float(np.sum((g - r) > 50)) / total
+        # White indicator: very bright AND color-neutral
+        # Threshold 200 (not 180) avoids false positives from grey overlay
+        bright = (r > 200) & (g > 200) & (b > 200)
+        neutral = (np.abs(r - g) < 40) & (np.abs(g - b) < 40)
+        white_pct = float(np.sum(bright & neutral)) / total
+        return red_pct, green_pct, white_pct
 
     for i, frame in enumerate(container.decode(video=0)):
         img = frame.to_ndarray(format="rgb24")
@@ -91,15 +115,10 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
         left_strip = img[strip_y1:strip_y2, int(40 * sx) : mid_x, :]
         right_strip = img[strip_y1:strip_y2, mid_x : int(1240 * sx), :]
 
-        # Overlay bar (for score-change detection via whole-bar diff)
-        bar_y1, bar_y2 = int(665 * sy), int(708 * sy)
-        bar = img[bar_y1:bar_y2, int(40 * sx) : int(1240 * sx), :]
-
         # --- Build baseline from first 50 frames ---
         if i < 50:
             baseline_left_strips.append(left_strip.astype(np.float32))
             baseline_right_strips.append(right_strip.astype(np.float32))
-            prev_bar = bar.copy()
             continue
 
         if i == 50:
@@ -111,85 +130,128 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
             baseline_right_r = float(np.mean(right_mean[:, :, 0]))
             baseline_right_g = float(np.mean(right_mean[:, :, 1]))
 
+        left_red, left_green, left_white = strip_signal(left_strip)
+        right_red, right_green, right_white = strip_signal(right_strip)
+
+        # --- Check pending touch for second light ---
+        # FIE allows 300ms (≈8 frames at 25fps) between first and second hit.
+        # Check if the other light appears within this window.
+        if pending_touch is not None:
+            pt = pending_touch
+            if pt["remaining"] > 0:
+                # Check absolute signal level (light is ON, not transitioning)
+                # For red/green: check color dominance
+                # For white: check bright-neutral pixels
+                if pt["side"] == "left" and (right_green > 0.15 or right_white > 0.10):
+                    pt["side"] = "both"
+                elif pt["side"] == "right" and (left_red > 0.15 or left_white > 0.10):
+                    pt["side"] = "both"
+                pt["remaining"] -= 1
+
+                if pt["remaining"] > 0 and pt["side"] != "both":
+                    prev_left_red = left_red
+                    prev_right_green = right_green
+                    prev_left_white_bright = left_white
+                    prev_right_white_bright = right_white
+                    continue
+
+            # Window expired or second light found — commit the exchange
+            exchanges.append(
+                Exchange(
+                    light_onset_frame=pt["onset_frame"],
+                    score_update_frame=pt["onset_frame"] + int(5 * fps),
+                    light_onset_s=pt["light_s"],
+                    score_update_s=pt["light_s"] + 5.0,
+                    clip_start_s=pt["clip_start"],
+                    clip_end_s=pt["clip_end"],
+                    side=pt["side"],
+                )
+            )
+            cooldown_until = pt["onset_frame"] + int(6 * fps)
+            pending_touch = None
+
         if i < cooldown_until:
-            prev_bar = bar.copy()
+            prev_left_red = left_red
+            prev_right_green = right_green
+            prev_left_white_bright = left_white
+            prev_right_white_bright = right_white
             continue
 
         # --- Detect touch indicator line ---
-        # Check for strong color signal in the strip that differs from baseline
-        # Red line: R channel much higher than baseline
-        # Green line: G channel much higher than baseline
-        # White line: all channels much higher than baseline
-
-        def strip_signal(strip: np.ndarray) -> tuple[float, float]:
-            """Compute red and green signal strength in a strip.
-
-            Returns (red_pct, green_pct) — fraction of pixels where that
-            color channel dominates.
-            """
-            r = strip[:, :, 0].astype(np.float32)
-            g = strip[:, :, 1].astype(np.float32)
-            total = strip.shape[0] * strip.shape[1]
-            red_pct = float(np.sum((r - g) > 50)) / total
-            green_pct = float(np.sum((g - r) > 50)) / total
-            return red_pct, green_pct
-
-        left_red, left_green = strip_signal(left_strip)
-        right_red, right_green = strip_signal(right_strip)
-
-        # Detect TRANSITIONS: compare against previous frame's signal
+        # Detect TRANSITIONS: compare against previous frame's signal.
+        # Red/green: color dominance transition (>20% jump)
+        # White: bright-neutral pixel fraction transition (>8% jump,
+        #   with higher brightness threshold of 200 to avoid false positives)
         left_color = ""
         right_color = ""
 
         if prev_left_red is not None:
-            # Red touch line APPEARS: left red jumps by >20% from previous frame
+            # Red touch line on left side
             if left_red - prev_left_red > 0.20:
                 left_color = "red"
-            # Green touch line APPEARS on the right side
+            # White (off-target) on left side
+            elif left_white - prev_left_white_bright > 0.08:
+                left_color = "white"
+            # Green touch line on right side
             if right_green - prev_right_green > 0.20:
                 right_color = "green"
+            # White (off-target) on right side
+            elif right_white - prev_right_white_bright > 0.08:
+                right_color = "white"
 
         prev_left_red = left_red
         prev_left_green = left_green
         prev_right_red = right_red
         prev_right_green = right_green
+        prev_left_white_bright = left_white
+        prev_right_white_bright = right_white
 
-        # Determine if a touch happened (only on-target: red or green)
+        # Determine if a touch happened (red, green, or white)
         touch_detected = False
         touch_side = ""
 
-        if left_color == "red" and right_color == "green":
+        has_left = left_color in ("red", "white")
+        has_right = right_color in ("green", "white")
+
+        if has_left and has_right:
             touch_detected = True
             touch_side = "both"
-        elif left_color == "red":
+        elif has_left:
             touch_detected = True
             touch_side = "left"
-        elif right_color == "green":
+        elif has_right:
             touch_detected = True
             touch_side = "right"
 
         if touch_detected:
             light_s = i / fps
-            # Clip: 3s before touch to 5s after (captures action + referee decision)
             clip_start = max(0, light_s - 3.0)
             clip_end = light_s + 5.0
 
-            exchanges.append(
-                Exchange(
-                    light_onset_frame=i,
-                    score_update_frame=i + int(5 * fps),  # approximate
-                    light_onset_s=light_s,
-                    score_update_s=light_s + 5.0,
-                    clip_start_s=clip_start,
-                    clip_end_s=clip_end,
-                    side=touch_side,
+            if touch_side == "both":
+                # Both lights on same frame — commit immediately
+                exchanges.append(
+                    Exchange(
+                        light_onset_frame=i,
+                        score_update_frame=i + int(5 * fps),
+                        light_onset_s=light_s,
+                        score_update_s=light_s + 5.0,
+                        clip_start_s=clip_start,
+                        clip_end_s=clip_end,
+                        side="both",
+                    )
                 )
-            )
-
-            # Cooldown: skip 6s after touch (covers the reset period)
-            cooldown_until = i + int(6 * fps)
-
-        prev_bar = bar.copy()
+                cooldown_until = i + int(6 * fps)
+            else:
+                # Buffer touch — check next 8 frames for second light
+                pending_touch = {
+                    "onset_frame": i,
+                    "side": touch_side,
+                    "light_s": light_s,
+                    "clip_start": clip_start,
+                    "clip_end": clip_end,
+                    "remaining": 8,
+                }
 
     container.close()
     return exchanges

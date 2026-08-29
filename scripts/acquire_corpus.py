@@ -230,9 +230,16 @@ def process_video(
     rejected = 0
 
     for j, ex in enumerate(exchanges):
-        # Load frames from 3s before touch to 10s after (for score detection)
+        # Load frames from 3s before touch up to the next exchange's onset.
+        # The next exchange's light is the hard boundary — any score change
+        # after that belongs to a different exchange.
         assess_start_s = max(0, ex.light_onset_s - 3.0)
-        assess_end_s = ex.light_onset_s + 10.0
+        if j + 1 < len(exchanges):
+            # Boundary: next exchange's light onset (don't bleed into it)
+            assess_end_s = exchanges[j + 1].light_onset_s
+        else:
+            # Last exchange: use 60s upper bound
+            assess_end_s = ex.light_onset_s + 60.0
         assess_frames = _load_frame_range(str(video_path), assess_start_s, assess_end_s)
 
         if not assess_frames:
@@ -240,7 +247,10 @@ def process_video(
 
         # Touch is at 3 seconds into the loaded segment
         touch_frame_local = int(3.0 * fps)
-        quality = assess_exchange(assess_frames, touch_frame_local, fps, weapon)
+        # Lookahead bounded by next exchange
+        lookahead = len(assess_frames) - touch_frame_local
+        quality = assess_exchange(assess_frames, touch_frame_local, fps, weapon,
+                                  lookahead_frames=lookahead)
 
         if quality.reject:
             rejected += 1

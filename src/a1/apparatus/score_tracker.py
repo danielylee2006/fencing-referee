@@ -1,132 +1,71 @@
 """Score change detection for FencingVision overlay.
 
-Auto-detects the overlay bar position, then monitors score digit regions
-for changes after a touch. No hard-coded pixel coordinates — the bar and
-score positions are found automatically per video.
+Uses OCR (EasyOCR) to read actual score digits, then compares before/after
+a touch to determine which side scored. Also detects paused clock
+(equipment test / blade test filter).
 
-Also detects paused clock (equipment test / blade test filter).
+The FencingVision overlay has a standardized layout at 1280x720:
+  - Grey bar: y=607-647
+  - Left score digit: x≈510-580
+  - Right score digit: x≈700-770
+  - Clock: x≈590-690
+  - Touch indicator strip: y=648-663 (just below the bar)
+
+All positions scale proportionally with frame resolution.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 
+import cv2
 import numpy as np
 
 
 @dataclass
 class OverlayRegions:
-    """Pixel regions for the FencingVision overlay, auto-detected."""
+    """Pixel regions for the FencingVision overlay, proportional to frame size."""
 
     bar_top: int
     bar_bottom: int
-    bar_left: int
-    bar_right: int
     left_score: tuple[int, int, int, int]  # y1, y2, x1, x2
     right_score: tuple[int, int, int, int]
     clock: tuple[int, int, int, int]
+    left_strip: tuple[int, int, int, int]  # touch indicator strip regions
+    right_strip: tuple[int, int, int, int]
 
     @classmethod
-    def detect(cls, frames: list[np.ndarray]) -> OverlayRegions | None:
-        """Auto-detect overlay regions by averaging multiple frames.
-
-        Finds the grey score bar in the bottom 15% of the frame, then
-        locates score digits and clock by finding dark pixel clusters
-        on the grey background.
-        """
-        if not frames:
-            return None
-
-        # Average frames to reduce noise from fencer movement
-        avg = np.mean(
-            [f.astype(np.float32) for f in frames[:min(20, len(frames))]],
-            axis=0,
-        ).astype(np.uint8)
-
-        h, w = avg.shape[:2]
-
-        # --- Step 1: Find the grey bar ---
-        # Scan bottom 15% for rows with >45% grey pixels
-        scan_start = int(h * 0.83)
-        grey_rows: list[tuple[int, float, int, int]] = []
-
-        for y in range(scan_start, h):
-            row = avg[y, :, :]
-            r = row[:, 0].astype(np.float32)
-            g = row[:, 1].astype(np.float32)
-            b = row[:, 2].astype(np.float32)
-            brightness = (r + g + b) / 3
-            color_var = np.abs(r - g) + np.abs(g - b) + np.abs(r - b)
-            grey_mask = (color_var < 60) & (brightness > 130) & (brightness < 210)
-            grey_frac = float(grey_mask.sum()) / w
-
-            if grey_frac > 0.45:
-                grey_cols = np.where(grey_mask)[0]
-                grey_rows.append((y, grey_frac, int(grey_cols[0]), int(grey_cols[-1])))
-
-        if len(grey_rows) < 20:
-            return None
-
-        # Find longest contiguous block of grey rows
-        ys = [r[0] for r in grey_rows]
-        best_start = 0
-        best_len = 1
-        cur_start = 0
-        for i in range(1, len(ys)):
-            if ys[i] - ys[i - 1] > 2:
-                if i - cur_start > best_len:
-                    best_len = i - cur_start
-                    best_start = cur_start
-                cur_start = i
-        if len(ys) - cur_start > best_len:
-            best_len = len(ys) - cur_start
-            best_start = cur_start
-
-        bar_rows = grey_rows[best_start : best_start + best_len]
-        bar_top = bar_rows[0][0]
-        bar_bottom = bar_rows[-1][0]
-        bar_right = int(np.median([r[3] for r in bar_rows]))
-        bar_left = int(np.median([r[2] for r in bar_rows]))
-
-        # --- Step 2: Locate score digits and clock ---
-        # The FencingVision overlay template places elements at fixed
-        # proportional positions relative to the frame center. The bar
-        # y-position can shift slightly between events, but the x-layout
-        # is fixed for a given resolution.
-        #
-        # At 1280x720:
-        #   Left score digit center:  x ≈ 545  (frame_center - 95)
-        #   Clock center:             x ≈ 640  (frame_center)
-        #   Right score digit center: x ≈ 735  (frame_center + 95)
-        #
-        # We scale these proportionally to the actual frame width.
+    def from_frame_size(cls, h: int, w: int) -> OverlayRegions:
+        """Compute overlay regions from known FencingVision proportions."""
+        sy = h / 720.0
         sx = w / 1280.0
-        frame_cx = w // 2
-        score_offset = int(95 * sx)
-        score_half_w = int(25 * sx)  # half-width of score region
-        clock_half_w = int(50 * sx)
 
-        ls_cx = frame_cx - score_offset
-        rs_cx = frame_cx + score_offset
+        bar_top = int(607 * sy)
+        bar_bottom = int(647 * sy)
 
-        ls_x1 = ls_cx - score_half_w
-        ls_x2 = ls_cx + score_half_w
-        rs_x1 = rs_cx - score_half_w
-        rs_x2 = rs_cx + score_half_w
-        clock_x1 = frame_cx - clock_half_w
-        clock_x2 = frame_cx + clock_half_w
+        # Score digit regions — generous crop for OCR reliability
+        score_y1 = int(609 * sy)
+        score_y2 = int(645 * sy)
 
-        text_y1 = bar_top + (bar_bottom - bar_top) // 4
-        text_y2 = bar_bottom - (bar_bottom - bar_top) // 4
+        ls_x1, ls_x2 = int(510 * sx), int(580 * sx)
+        rs_x1, rs_x2 = int(700 * sx), int(770 * sx)
+
+        # Clock region
+        clock_x1, clock_x2 = int(590 * sx), int(690 * sx)
+
+        # Touch indicator strip (just below the bar)
+        strip_y1, strip_y2 = int(648 * sy), int(663 * sy)
+        mid_x = w // 2
 
         return cls(
             bar_top=bar_top,
             bar_bottom=bar_bottom,
-            bar_left=bar_left,
-            bar_right=bar_right,
-            left_score=(text_y1, text_y2, ls_x1, ls_x2),
-            right_score=(text_y1, text_y2, rs_x1, rs_x2),
-            clock=(text_y1, text_y2, clock_x1, clock_x2),
+            left_score=(score_y1, score_y2, ls_x1, ls_x2),
+            right_score=(score_y1, score_y2, rs_x1, rs_x2),
+            clock=(score_y1, score_y2, clock_x1, clock_x2),
+            left_strip=(strip_y1, strip_y2, int(40 * sx), mid_x),
+            right_strip=(strip_y1, strip_y2, mid_x, int(1240 * sx)),
         )
 
 
@@ -136,41 +75,88 @@ def extract_region(frame: np.ndarray, region: tuple[int, int, int, int]) -> np.n
     return frame[y1:y2, x1:x2, :]
 
 
-def region_signature(region: np.ndarray) -> float:
-    """Compute a signature for a score region.
+@lru_cache(maxsize=1)
+def _get_ocr_reader():  # type: ignore[no-untyped-def]
+    """Lazy-load EasyOCR reader (downloads model on first call)."""
+    import easyocr
 
-    Uses the count of dark pixels (the digit strokes) as a stable
-    metric that changes when the digit changes but is robust to
-    minor brightness fluctuations.
+    return easyocr.Reader(["en"], gpu=False, verbose=False)
+
+
+def read_score(frame: np.ndarray, region: tuple[int, int, int, int]) -> int | None:
+    """Read a score digit from a frame region using OCR.
+
+    Returns the integer score, or None if OCR fails.
     """
-    gray = region.mean(axis=2)
-    return float(np.sum(gray < 100))
+    crop = extract_region(frame, region)
+    if crop.size == 0:
+        return None
 
+    # Upscale 6x for OCR reliability on small regions.
+    # 4x fails on thin digits like "7"; 6x reads all 0-15 reliably.
+    big = cv2.resize(
+        crop,
+        (crop.shape[1] * 6, crop.shape[0] * 6),
+        interpolation=cv2.INTER_CUBIC,
+    )
 
-def region_changed(sig_a: float, sig_b: float, threshold: float = 10.0) -> bool:
-    """Check if a score region changed between two signatures."""
-    return abs(sig_a - sig_b) > threshold
+    reader = _get_ocr_reader()
+    results = reader.readtext(big, allowlist="0123456789", paragraph=False)
+
+    if not results:
+        return None
+
+    text = results[0][1]
+    try:
+        return int(text)
+    except ValueError:
+        return None
 
 
 def clock_is_running(
-    clock_frames: list[np.ndarray],
-    min_frames: int = 10,
-    drift_threshold: float = 1.5,
+    frames: list[np.ndarray],
+    regions: OverlayRegions,
+    frame_start: int,
+    frame_end: int,
 ) -> bool:
-    """Check if the clock is running by measuring cumulative pixel drift.
+    """Check if the clock is running by reading the clock via OCR.
 
-    At 25fps, frame-to-frame clock diffs are tiny (<0.05). Instead,
-    compare the first and last frames in the window — a running clock
-    drifts ~2-3 over 50 frames (2 seconds), while a paused clock
-    stays below ~0.8.
+    Reads the clock at two points ~2 seconds apart. If the values
+    differ, the clock is running. If they're the same, it's stopped
+    (blade test / equipment check).
     """
-    if len(clock_frames) < min_frames:
-        return True  # assume running if not enough data
+    if frame_end - frame_start < 25:
+        return True  # not enough separation to check
 
-    first = clock_frames[0].astype(np.float32)
-    last = clock_frames[-1].astype(np.float32)
-    drift = float(np.mean(np.abs(last - first)))
-    return drift > drift_threshold
+    # Read clock at start and end of window
+    t1 = _read_clock(frames[frame_start], regions.clock)
+    t2 = _read_clock(frames[min(frame_end - 1, len(frames) - 1)], regions.clock)
+
+    if t1 is None or t2 is None:
+        return True  # assume running if OCR fails
+
+    return t1 != t2
+
+
+def _read_clock(frame: np.ndarray, region: tuple[int, int, int, int]) -> str | None:
+    """Read clock text from a frame region via OCR."""
+    crop = extract_region(frame, region)
+    if crop.size == 0:
+        return None
+
+    big = cv2.resize(
+        crop,
+        (crop.shape[1] * 6, crop.shape[0] * 6),
+        interpolation=cv2.INTER_CUBIC,
+    )
+
+    reader = _get_ocr_reader()
+    results = reader.readtext(big, allowlist="0123456789:", paragraph=False)
+
+    if not results:
+        return None
+
+    return results[0][1]
 
 
 @dataclass
@@ -181,6 +167,10 @@ class ScoreChange:
     change_frame: int  # frame where the change was first detected
     change_time_s: float  # timestamp of the change
     clock_running: bool  # whether the clock was running at touch time
+    left_before: int | None = None
+    left_after: int | None = None
+    right_before: int | None = None
+    right_after: int | None = None
 
 
 def detect_score_change(
@@ -191,68 +181,70 @@ def detect_score_change(
     lookback_frames: int = 25,
     lookahead_frames: int = 100,
 ) -> ScoreChange:
-    """Detect which side's score changes after a touch.
+    """Detect which side's score changes after a touch using OCR.
+
+    Reads the score digits before the touch, then scans forward at
+    1-second intervals to find when/if the score changes.
 
     Args:
-        frames: list of all video frames as numpy arrays
+        frames: list of video frames as numpy arrays
         touch_frame: frame index where the touch light was detected
         fps: video frame rate
-        regions: overlay regions (auto-detected if None)
-        lookback_frames: frames before touch to establish baseline
-        lookahead_frames: frames after touch to look for score change
+        regions: overlay regions (computed from frame size if None)
+        lookback_frames: frames before touch to read baseline score
+        lookahead_frames: frames after touch to scan for score change
 
     Returns:
-        ScoreChange with the detected side and timing
+        ScoreChange with the detected side, timing, and score values
     """
     if not frames:
         return ScoreChange(side="none", change_frame=-1, change_time_s=0, clock_running=True)
 
+    h, w = frames[0].shape[:2]
     if regions is None:
-        # Use frames around the touch for detection
-        detect_start = max(0, touch_frame - 30)
-        detect_end = min(len(frames), touch_frame + 10)
-        regions = OverlayRegions.detect(frames[detect_start:detect_end])
-        if regions is None:
-            return ScoreChange(
-                side="none", change_frame=-1, change_time_s=0, clock_running=True
-            )
+        regions = OverlayRegions.from_frame_size(h, w)
 
-    # Establish baseline: average signature over lookback period
-    baseline_start = max(0, touch_frame - lookback_frames)
-    baseline_end = touch_frame
+    # Read baseline scores from before the touch
+    baseline_frame = max(0, touch_frame - lookback_frames)
+    left_before = read_score(frames[baseline_frame], regions.left_score)
+    right_before = read_score(frames[baseline_frame], regions.right_score)
 
-    left_sigs: list[float] = []
-    right_sigs: list[float] = []
-    clock_frames_list: list[np.ndarray] = []
+    # Check clock via OCR — read at two points before the touch
+    clock_start = max(0, touch_frame - 50)
+    clock_end = touch_frame
+    clock_running = clock_is_running(frames, regions, clock_start, clock_end)
 
-    for i in range(baseline_start, min(baseline_end, len(frames))):
-        left_sigs.append(region_signature(extract_region(frames[i], regions.left_score)))
-        right_sigs.append(region_signature(extract_region(frames[i], regions.right_score)))
-        clock_frames_list.append(extract_region(frames[i], regions.clock))
+    if left_before is None and right_before is None:
+        return ScoreChange(
+            side="none", change_frame=-1, change_time_s=0,
+            clock_running=clock_running,
+        )
 
-    if not left_sigs:
-        return ScoreChange(side="none", change_frame=-1, change_time_s=0, clock_running=True)
-
-    baseline_left = float(np.mean(left_sigs))
-    baseline_right = float(np.mean(right_sigs))
-
-    # Check if clock was running before the touch
-    clock_running = clock_is_running(clock_frames_list)
-
-    # Look forward for score change
+    # Scan forward for score change, bounded by lookahead_frames.
+    # The caller sets lookahead_frames to the next exchange's light
+    # onset, which is the hard boundary of this exchange. Any score
+    # change after the next light fires belongs to a different exchange.
+    #
+    # Strategy: scan at 1-second intervals via OCR.
     scan_end = min(touch_frame + lookahead_frames, len(frames))
+    step = max(1, int(fps))  # ~1 second intervals
+
     left_changed_frame = -1
     right_changed_frame = -1
+    left_after = left_before
+    right_after = right_before
 
-    for i in range(touch_frame, scan_end):
-        left_sig = region_signature(extract_region(frames[i], regions.left_score))
-        right_sig = region_signature(extract_region(frames[i], regions.right_score))
+    for i in range(touch_frame, scan_end, step):
+        l = read_score(frames[i], regions.left_score)
+        r = read_score(frames[i], regions.right_score)
 
-        if left_changed_frame < 0 and region_changed(baseline_left, left_sig):
+        if left_changed_frame < 0 and l is not None and left_before is not None and l != left_before:
             left_changed_frame = i
+            left_after = l
 
-        if right_changed_frame < 0 and region_changed(baseline_right, right_sig):
+        if right_changed_frame < 0 and r is not None and right_before is not None and r != right_before:
             right_changed_frame = i
+            right_after = r
 
         if left_changed_frame >= 0 and right_changed_frame >= 0:
             break
@@ -281,4 +273,8 @@ def detect_score_change(
         change_frame=change_frame,
         change_time_s=change_time,
         clock_running=clock_running,
+        left_before=left_before,
+        left_after=left_after,
+        right_before=right_before,
+        right_after=right_after,
     )

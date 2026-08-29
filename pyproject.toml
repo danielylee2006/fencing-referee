@@ -12,6 +12,7 @@ dependencies = [
     "pandera>=0.20,<1",
     "yt-dlp>=2024.8,<2028",
     "av>=12,<14",
+    "easyocr>=1.7.2",
 ]
 
 [project.optional-dependencies]

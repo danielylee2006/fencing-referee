@@ -22,7 +22,6 @@ from a1.apparatus.score_tracker import (
     ScoreChange,
     clock_is_running,
     detect_score_change,
-    extract_region,
 )
 
 
@@ -52,6 +51,7 @@ def assess_exchange(
     touch_frame: int,
     fps: float,
     weapon: str = "foil",
+    lookahead_frames: int | None = None,
 ) -> ExchangeQuality:
     """Assess the quality of a detected exchange.
 
@@ -71,36 +71,31 @@ def assess_exchange(
         result.reject_reason = "invalid_frame_data"
         return result
 
-    # --- Step 1: Detect overlay and score regions ---
-    detect_start = max(0, touch_frame - 30)
-    detect_end = min(len(frames), touch_frame + 10)
-    regions = OverlayRegions.detect(frames[detect_start:detect_end])
+    h, w = frames[0].shape[:2]
+    regions = OverlayRegions.from_frame_size(h, w)
 
-    if regions is None:
-        result.reject = True
-        result.reject_reason = "overlay_not_detected"
-        return result
-
-    # --- Step 2: Check clock before touch ---
+    # --- Step 1: Check clock before touch ---
+    # Read clock at two points ~2 seconds apart before the touch.
+    # If the clock reads the same value, it's stopped (blade test).
     clock_start = max(0, touch_frame - 50)
     clock_end = touch_frame
-    clock_frames = [
-        extract_region(frames[i], regions.clock)
-        for i in range(clock_start, min(clock_end, len(frames)))
-    ]
-    result.clock_running_before = clock_is_running(clock_frames)
+    result.clock_running_before = clock_is_running(
+        frames, regions, clock_start, clock_end,
+    )
 
     if not result.clock_running_before:
         result.reject = True
         result.reject_reason = "clock_paused"
         return result
 
-    # --- Step 3: Detect score change ---
+    # --- Step 2: Detect score change via OCR ---
+    la = lookahead_frames if lookahead_frames is not None else len(frames) - touch_frame
     result.score_change = detect_score_change(
-        frames, touch_frame, fps, regions, lookback_frames=25, lookahead_frames=100
+        frames, touch_frame, fps, regions, lookback_frames=25,
+        lookahead_frames=la,
     )
 
-    # --- Step 4: Determine label ---
+    # --- Step 3: Determine label ---
     sc = result.score_change
 
     if weapon == "epee":
@@ -116,9 +111,10 @@ def assess_exchange(
     elif sc.side in ("left", "right"):
         result.label = sc.side.upper()
 
-        # Check if score change was very late (>4 seconds after touch)
+        # Check if score change was very late (>6 seconds after touch)
+        # 4-5s delays are normal — referee watches replay, discusses
         delay = sc.change_time_s - (touch_frame / fps)
-        if delay > 4.0:
+        if delay > 6.0:
             result.flags.append("late_score_change")
     elif sc.side == "both":
         # Both scores changed — unusual, might be a detection error
