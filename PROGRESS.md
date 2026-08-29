@@ -4,7 +4,7 @@
 > Updated by the `/save` command. Read by `/start`.
 > Phases are defined in CLAUDE.md section 8 and the PRD.
 
-**Last updated:** 2026-08-28T22:00:00Z
+**Last updated:** 2026-08-29T06:00:00Z
 
 ## Engineers
 
@@ -76,23 +76,54 @@ Track B (GPU):       └─→ P4b (independent, GPU-gated)
   - [x] Create profile entry with PRD section 15 measures
   - [x] Add row to entry-placement.json
   - [ ] Draft and send faculty-sponsor email
-  - [x] Build score change detection for FencingVision overlay (pixel-diff, auto-detected bar position)
-  - [x] Build pipeline filters: paused clock (blade test rejection), no-score-change flagging
+  - [x] Build score change detection for FencingVision overlay — rewritten to use OCR (EasyOCR)
+  - [x] Build pipeline filters: paused clock (blade test rejection via OCR clock reading), no-score-change flagging
   - [x] Build exchange quality assessment module (src/a1/apparatus/exchange_filter.py)
-  - [ ] Integrate filters into acquire_corpus.py and validate on 30 diverse clips
+  - [x] Add batch verification mode to annotation tool (--verify flag, N/P navigation)
+  - [x] Verify 30 diverse clips from 4 bouts (first verification round)
+  - [ ] Verify 41 clips from single full-video test (GUO vs SAVIN) — in progress, need to resume
+  - [ ] Fix white light detection false positives (brightness>200 threshold still miscalibrated)
   - [ ] Start corpus acquisition (blocked on pipeline validation)
 - **Resume context** (written by `/save`):
-  - **Last worked:** 2026-08-28T22:00:00Z @danielylee2006
-  - **Last commit:** ec58a0c P0: fix acquisition pipeline — stream frames instead of loading full video
-  - **Files touched this session:** tests/fixtures/manifest.yaml, tests/fixtures/clips/fixture_*.mp4, data/manifests/source_channels.yaml, scripts/acquire_corpus.py, src/a1/apparatus/score_tracker.py, src/a1/apparatus/exchange_filter.py, Makefile, PROGRESS.md, CLAUDE.md
-  - **Next step:** Test the integrated acquisition pipeline on first playlist. Select 30 diverse clips (double touches, off-target, clean singles; mostly foil, some sabre/epee). Manually verify each in annotation tool. If pipeline is reliable, restart full corpus acquisition.
+  - **Last worked:** 2026-08-29T06:00:00Z @danielylee2006
+  - **Last commit:** 37076a4 P0: WIP — OCR-based score detection, improved light detection, batch verification
+  - **Files touched this session:** scripts/acquire_corpus.py, scripts/extract_exchanges.py, src/a1/apparatus/score_tracker.py, src/a1/apparatus/exchange_filter.py, tools/annotate/app.py, tools/annotate/main_window.py, pyproject.toml, uv.lock, data/manifests/corpus_manifest.yaml, data/corpus/verify_full_video.yaml, PROGRESS.md
+  - **Next step:** Resume verification of 41 clips from GUO vs SAVIN (data/corpus/verify_full_video.yaml). Run: `uv run python -m tools.annotate --verify data/corpus/verify_full_video.yaml`. Clip numbering changed from previous run — start from clip 1. White light detection still has false positives (clips 2, 3, 33 in prior run) — may need further tuning based on verification results. Test video is in data/corpus/.tmp/iT5tv5va1Ws.mp4.
   - **Open questions / gotchas:**
-    - The acquisition pipeline (acquire_corpus.py) was being tested when session ended — check if it completed and review results.
-    - Score change detection works 10/10 on fixture clips but initial corpus run showed 64% "no_score_change" because the 8s clip window was too short. Fixed by loading ~13s of frames from the full video for assessment, then trimming clips to include the score change (variable 8-15s).
-    - Loading ALL video frames into memory for assessment (~41 GB for a 10-min bout) caused OOM. Fixed by seeking to each exchange and loading only ~13s of frames.
-    - Off-camera detection was not implemented as a hard filter — edge density varies too much by weapon/venue. Flagging instead of rejecting is the plan.
-    - Action labeling (T2) confirmed not needed for P0 or core results.
-    - The annotation tool's space bar (play/pause) still doesn't work — only arrow key frame stepping works.
+    - White light (off-target) detection uses brightness>200 + color-neutral threshold with 8% transition jump. Still produces false positives on some clips and misses real whites on others. The "detect bar appearance first, then classify color" approach was tried but failed — left strip touch signal is only Δ+4 brightness, too small for any threshold. Need better approach or accept imperfect white detection for P0.
+    - OCR-based clock detection now works for blade test rejection (5/41 correctly rejected in test video). But clock detection was completely broken before this session — drift-based approach measured fencer movement, not clock changes.
+    - Score scan is bounded by next exchange's light onset — eliminates bleeding into subsequent exchanges. Works well but means the last exchange in a video uses a 60s fallback window.
+    - EasyOCR added as dependency (brings torch). CI may need updating. Score reading uses 6x upscaling (4x failed on digit "7").
+    - The 41-clip test set includes 6 new exchanges not in the original 37 — these appeared after white light detection was added. Some may be false positive detections that need verification.
+    - Session 3's decision "No full OCR needed" was reversed — pixel counting had only a 3-pixel margin between noise and real changes, causing false positives and missed detections.
+- **Session log — 2026-08-28/29 (session 4):**
+  - BUILT: Score tracker rewritten from pixel-counting to OCR (EasyOCR). Reads actual score digits (0-15) with 6x upscaling. Eliminates false positives from overlay glow artifacts that plagued the binarized approach.
+  - BUILT: Clock detection rewritten from drift-based to OCR. Reads clock at two points — if same value, clock is stopped (blade test). Drift approach was measuring fencer movement, not clock changes.
+  - BUILT: Score scan bounded by next exchange's light onset instead of fixed 20s window. Eliminates score change bleeding into subsequent exchanges (was causing blade tests to inherit the next exchange's score change).
+  - BUILT: Annotation tool batch verification mode (--verify flag). Accepts YAML clip list with expected labels, Next/Prev buttons + N/P keyboard shortcuts for stepping through clips. Shows pipeline label and light side in title bar.
+  - BUILT: White/off-target light detection added to extract_exchanges.py. Detects bright (>200) color-neutral pixels in touch indicator strip. Still has calibration issues.
+  - BUILT: 8-frame lookahead for second light in double touches (FIE 300ms lockout window). Both lights rarely fire on the same frame.
+  - BUG: Video 1 (Zeng v Choi) had 95% NONE labels — only 1/22 exchanges got a label. Root cause: `lookahead_frames=100` (4 seconds at 25fps) was too short. This referee took 4-7s to call touches. The pipeline loaded 10s of frames but only scanned the first 4s. Fix: scan all available frames.
+  - BUG: Score tracker false positive — overlay glow from touch indicator changed pixel counts in score region, crossing the binarized threshold of 10. Clip 29 (bP_I3a9P28k_025) was labeled LEFT when it should have been RIGHT. Root cause: binarized pixel counting had only a 3-pixel margin between noise (0-9) and real changes (13+). Fix: switched to OCR.
+  - BUG: OCR failed on digit "7" with 4x upscaling — EasyOCR couldn't detect it as text. Fix: 6x upscaling reads all digits 0-15 reliably.
+  - BUG: `both_scores_changed` false positive (clip 7, Zeng v Choi) — pixel counting detected both scores changing when only right changed (4-0→4-1). Root cause: same binarized threshold sensitivity issue. Fix: OCR reads exact values, no ambiguity.
+  - BUG: Score change from exchange 27 (blade test) bled into exchange 28's score change because 20s assessment window exceeded the gap between exchanges. Fix: bound scan by next exchange's light onset.
+  - BUG: Clock drift detection was completely unreliable — drift values 2-11 even when clock stopped because the clock region (100px wide) captured fencer movement. Fix: OCR-based clock reading.
+  - BUG: Clip 20 (GUO vs SAVIN) labeled NONE when score changed 7-9→8-9. OCR failed to read "7" at baseline. Fix: 6x upscaling resolved this.
+  - BUG: Overlay auto-detection (OverlayRegions.detect) returned inconsistent bar heights — clip 014 got h=18 vs normal h=40. Fix: switched to fixed proportional positions (OverlayRegions.from_frame_size) since FencingVision overlay is standardized.
+  - DECISION: Session 3's decision "No full OCR needed" reversed. Pixel counting had a 3-pixel margin between noise and real digit changes — too fragile. OCR reads actual values with 99%+ confidence and gives us the score numbers needed for P1's score-delta oracle.
+  - DECISION: EasyOCR chosen over PaddleOCR — simpler install, single `easyocr` package. PaddleOCR requires paddlepaddle + paddleocr. Both add torch as a dependency.
+  - DECISION: Score scan bounded by next exchange onset, not by clock restart. Clock detection is unreliable for this purpose (fencer movement confounds drift). Next exchange onset is a known hard boundary from the exchange detector.
+  - DECISION: Assessment window set to 60s (was 20s). The actual scan terminates at the next exchange's light onset, so 60s is just a generous upper bound for the last exchange in a video.
+  - DECISION: White light detection kept despite calibration issues — off-target touches matter for priority in foil. Will tune thresholds based on full verification results.
+  - LEARNED: In foil, the electronic scoring apparatus allows 300ms (±25ms) between first and second hit. At 25fps that's 7-8 frames. Both lights almost never fire on the exact same frame.
+  - LEARNED: FencingVision touch indicator brightness varies hugely between left (Δ+4 from baseline) and right (Δ+68). This makes brightness-threshold approaches for light detection unreliable. Color transition detection (R-G dominance) is more robust for red/green.
+  - LEARNED: Some referees take 30-50+ seconds to make calls (especially after video review). Fixed assessment windows of any length will miss some — next-exchange boundary is the correct approach.
+  - LEARNED: Both-lights-with-priority is valid training data (e.g., clip 32: left single touch but right fencer's blade touches floor after action, both lights fire, LEFT gets point). Light_side=both with label=LEFT teaches the model that double lights don't mean ambiguous priority.
+  - LEARNED: First verification round (30 clips, 4 bouts): labels 21/30 correct before fixes, all errors were NONE→actual (score change missed). After fixes: 10/10 on re-tested clips. Second round (37 clips, 1 full bout): labels 35/37 correct with OCR. Light_side had 4 errors from white detection calibration.
+  - DEFERRED: White light detection calibration — false positives on clips 2, 3, 33; miss on clip 9. Brightness>200 threshold helps but isn't sufficient. May need per-strip baseline or different approach for white.
+  - DEFERRED: Full corpus acquisition — blocked on completing pipeline verification.
+  - DEFERRED: Faculty sponsor email.
 - **Session log — 2026-08-28 (session 3):**
   - BUILT: Completed all 10 fixture clips — re-detected sabre (05-07) and epee (08-10) timestamps, re-trimmed, verified all 10 in annotation tool with Daniel.
   - BUILT: Score change detection (src/a1/apparatus/score_tracker.py) — auto-detects FencingVision overlay bar position via grey band scanning, monitors score digit regions for pixel-diff changes after touch, detects paused clock via cumulative drift.
