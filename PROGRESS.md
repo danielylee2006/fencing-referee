@@ -4,7 +4,7 @@
 > Updated by the `/save` command. Read by `/start`.
 > Phases are defined in CLAUDE.md section 8 and the PRD.
 
-**Last updated:** 2026-08-28T03:45:00Z
+**Last updated:** 2026-08-28T22:00:00Z
 
 ## Engineers
 
@@ -76,21 +76,51 @@ Track B (GPU):       └─→ P4b (independent, GPU-gated)
   - [x] Create profile entry with PRD section 15 measures
   - [x] Add row to entry-placement.json
   - [ ] Draft and send faculty-sponsor email
-  - [ ] Build score OCR for FencingVision overlay (validate on fixture clips)
-  - [ ] Build pipeline filters: paused clock, off-camera, no-score-change
-  - [ ] Integrate OCR + filters into acquire_corpus.py
+  - [x] Build score change detection for FencingVision overlay (pixel-diff, auto-detected bar position)
+  - [x] Build pipeline filters: paused clock (blade test rejection), no-score-change flagging
+  - [x] Build exchange quality assessment module (src/a1/apparatus/exchange_filter.py)
+  - [ ] Integrate filters into acquire_corpus.py and validate on 30 diverse clips
   - [ ] Start corpus acquisition (blocked on pipeline validation)
 - **Resume context** (written by `/save`):
-  - **Last worked:** 2026-08-28T03:45:00Z @danielylee2006
-  - **Last commit:** 44975c0 P0: fix fixture clip trimming — frame-accurate seeking and correct timestamps
-  - **Files touched this session:** scripts/download_fixtures.py, scripts/extract_exchanges.py, tests/fixtures/manifest.yaml, tests/fixtures/clips/fixture_01.mp4, tests/fixtures/clips/fixture_02.mp4, tests/fixtures/clips/fixture_03.mp4, tests/fixtures/clips/fixture_04.mp4
-  - **Next step:** Download sabre/epee source videos on better wifi, run extract_exchanges.py on each to get correct timestamps, update manifest for fixtures 05-10, re-trim those clips. Then verify all 10 in the annotation tool and label calls.
+  - **Last worked:** 2026-08-28T22:00:00Z @danielylee2006
+  - **Last commit:** ec58a0c P0: fix acquisition pipeline — stream frames instead of loading full video
+  - **Files touched this session:** tests/fixtures/manifest.yaml, tests/fixtures/clips/fixture_*.mp4, data/manifests/source_channels.yaml, scripts/acquire_corpus.py, src/a1/apparatus/score_tracker.py, src/a1/apparatus/exchange_filter.py, Makefile, PROGRESS.md, CLAUDE.md
+  - **Next step:** Test the integrated acquisition pipeline on first playlist. Select 30 diverse clips (double touches, off-target, clean singles; mostly foil, some sabre/epee). Manually verify each in annotation tool. If pipeline is reliable, restart full corpus acquisition.
   - **Open questions / gotchas:**
-    - Foil clips (01-04) are VERIFIED — correct timestamps, frame-accurate trimming, all show real touches with score changes.
-    - Sabre clips (05-07) and epee clips (08-10) still have STALE timestamps from the earlier buggy detection run. Must re-detect before trimming.
-    - The annotation tool's space bar (play/pause) doesn't work — only arrow key frame stepping works. Low priority fix.
-    - Action labeling UI is built but not needed for P0. Will be stripped from P0 tool and deferred to T2 phase.
-    - Internet connection was too slow (~115 KB/s) to download the remaining source videos. Need wifi for the ~150-200MB per video downloads.
+    - The acquisition pipeline (acquire_corpus.py) was being tested when session ended — check if it completed and review results.
+    - Score change detection works 10/10 on fixture clips but initial corpus run showed 64% "no_score_change" because the 8s clip window was too short. Fixed by loading ~13s of frames from the full video for assessment, then trimming clips to include the score change (variable 8-15s).
+    - Loading ALL video frames into memory for assessment (~41 GB for a 10-min bout) caused OOM. Fixed by seeking to each exchange and loading only ~13s of frames.
+    - Off-camera detection was not implemented as a hard filter — edge density varies too much by weapon/venue. Flagging instead of rejecting is the plan.
+    - Action labeling (T2) confirmed not needed for P0 or core results.
+    - The annotation tool's space bar (play/pause) still doesn't work — only arrow key frame stepping works.
+- **Session log — 2026-08-28 (session 3):**
+  - BUILT: Completed all 10 fixture clips — re-detected sabre (05-07) and epee (08-10) timestamps, re-trimmed, verified all 10 in annotation tool with Daniel.
+  - BUILT: Score change detection (src/a1/apparatus/score_tracker.py) — auto-detects FencingVision overlay bar position via grey band scanning, monitors score digit regions for pixel-diff changes after touch, detects paused clock via cumulative drift.
+  - BUILT: Exchange quality filter (src/a1/apparatus/exchange_filter.py) — rejects blade tests (clock paused), labels LEFT/RIGHT from score delta, labels NONE for epee, flags no-score-change and late changes.
+  - BUILT: Corpus acquisition pipeline (scripts/acquire_corpus.py) — downloads video, detects touches, assesses quality per exchange on full video frames, trims clips to include score change, deletes full video. Resumable.
+  - BUILT: Profile entry (~/Documents/Job/profile/entries/a1-fencing-referee.md) with all 60 PRD section 15 measures. Row added to entry-placement.json.
+  - BUG: Fixture 01 (originally exchange #1 at 14.32s) had fencers off-camera during touch — camera pan too slow. Swapped to exchange #2 (77.52s). That exchange showed off-target priority (left attacks off-target, annuls right's valid touch, no point). Label changed from RIGHT to LEFT, clip extended to 11s to capture referee decision.
+  - BUG: Fixture 03 (exchange #8 at 189.20s) was a blade test — Bibard stopped the bout to test equipment, clock was paused, light fired but not a real exchange. Swapped to exchange #9 (209.32s).
+  - BUG: Fixture 10 (epee, exchange #1 at 44.32s) was a blade test — Hauri tested on himself, clock paused. Exchange #2 (149.08s) also a test. Swapped to exchange #4 (336.96s).
+  - BUG: Initial score tracker used hard-coded pixel coordinates (x=510-570 for left score). These hit the decorative bracket, not the score digit. Corrected to x=525-565 by visual inspection of overlay bar crops. Then replaced with proportional auto-detection.
+  - BUG: Clock detection initially used per-frame diffs (threshold 3.0) — showed PAUSED for everything because FencingVision clock changes are tiny at 25fps (<0.05 per frame). Fixed by using cumulative drift over 50 frames (running ≈2.5, paused ≈0.5, threshold 1.5).
+  - BUG: First corpus acquisition run (with old pipeline) showed 64% "no_score_change" because clips were fixed 8s (light-3s to light+5s) and referee decisions often take 5-10s. Fixed by assessing on full video then trimming to include score change.
+  - BUG: Attempted to load all frames of a 10-min bout into memory (~15,000 frames × 1280×720×3 = ~41 GB). Process appeared to complete but produced no output. Fixed by streaming only ~13s of frames per exchange from the full video.
+  - DECISION: Fixture 05 label changed from LEFT to RIGHT — Oh fleches, Morrill parries and ripostes, referee awards RIGHT (parry-riposte has priority over fleche). The touch detector said LEFT because the red light fired first, but priority determines the label.
+  - DECISION: Off-camera detection NOT implemented as a hard filter — edge density varies too much by weapon/venue/zoom. Will flag for manual review instead. Off-camera is rare per Daniel.
+  - DECISION: No full OCR needed — pixel-diff score change detection is sufficient and more reliable than OCR for the FencingVision overlay. Score digits are dark-on-grey; counting dark pixels and detecting changes is enough for labeling.
+  - DECISION: Overlay bar y-position auto-detected (scan bottom 15% for grey band >45% coverage), score digit x-positions proportional to frame center (center ± 95px at 1280w). No hard-coded pixel coordinates.
+  - DECISION: Added 3 foil playlists (2024 Shanghai, 2024 Torino, 2023 Shanghai) to hit ~60/20/20 foil/sabre/epee ratio. Total: 9 playlists, ~946 videos.
+  - DECISION: PRD updated — FencingVision at 25fps is the primary source (overlay reliability outweighs frame rate). ≥50fps ablation deferred unless a reliable high-fps source with standardized overlay is found.
+  - DECISION: Pipeline validates extraction quality BEFORE bulk acquisition — a broken pipeline over 946 videos wastes days of compute.
+  - DECISION: Clips are variable length (8-15s) instead of fixed 8s, bounded by light-3s to score_change+2s, capped at 15s.
+  - LEARNED: Blade tests (equipment checks) fire the touch light with clock paused — a frequent false positive. Three of our original 10 fixture clips were blade tests. Clock-paused detection is a reliable filter.
+  - LEARNED: FencingVision overlay bar is always at y≈607-647 in 720p, right edge at ~x=1025. Score digits are at consistent proportional positions relative to frame center across all events and weapons tested.
+  - LEARNED: Fencing exchanges where left has priority but hits off-target result in no score change — the score-delta oracle labels these as NONE, but the actual priority call is LEFT. These are valid training examples showing priority without a point.
+  - LEARNED: The epee negative control question is deeper than expected — Daniel pointed out the model could learn to output NONE simply by recognizing weapon type from visual cues (different guard shape, no lamé). A true negative control requires the model to not distinguish weapons from its inputs.
+  - DEFERRED: Manual verification of 30 diverse corpus clips — pipeline integration was being tested when session ended.
+  - DEFERRED: Full corpus acquisition restart — blocked on pipeline validation.
+  - DEFERRED: Faculty sponsor email — Daniel said it's drafted but not yet sent.
 - **Session log — 2026-08-28 (session 2):**
   - BUILT: Fixed frame-accurate clip trimming — moved ffmpeg `-ss` after `-i` in both download_fixtures.py and extract_exchanges.py. Before: `-ss` before `-i` does keyframe seeking, landing on wrong timestamps. After: `-ss` after `-i` with re-encoding gives exact frame positioning.
   - BUILT: Updated manifest foil timestamps (fixtures 01-04) from current extract_exchanges.py output. Verified all 4 clips visually: each shows fencing action → touch lights → score change.
