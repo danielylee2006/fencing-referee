@@ -1,13 +1,15 @@
-"""S0 corpus acquisition — download, extract exchanges, save clips, delete full videos.
+"""S0 corpus acquisition — download, detect, assess, trim, label.
 
 Pipeline per video:
 1. Download full bout video (temporary)
 2. Run exchange detection (touch lights in FencingVision overlay)
-3. Trim each exchange to an 8-second clip (light-3s to light+5s)
-4. Delete the full video
+3. Trim each exchange to a clip
+4. Assess quality: score change detection, clock check, label assignment
+5. Reject blade tests, flag quality issues, keep good exchanges
+6. Delete the full video
 
 Exchange clips are saved to data/corpus/clips/<video_id>_<exchange_num>.mp4.
-A manifest tracks all processed videos and their exchanges.
+A manifest tracks all processed videos and their exchanges with labels.
 
 Resumable: skips videos already processed. Safe to interrupt and restart.
 
@@ -27,11 +29,17 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import av
+import numpy as np
 import yaml
 
-# Import the exchange detector from the existing script
+# Import the exchange detector
 sys.path.insert(0, str(Path(__file__).parent))
 from extract_exchanges import Exchange, detect_exchanges
+
+# Import the quality assessment pipeline
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+from a1.apparatus.exchange_filter import assess_exchange
 
 MANIFEST_PATH = Path("data/manifests/source_channels.yaml")
 CLIPS_DIR = Path("data/corpus/clips")
@@ -179,13 +187,26 @@ def trim_clip(source: Path, start_s: float, duration_s: float, out_path: Path) -
     return True
 
 
+def load_clip_frames(clip_path: Path) -> tuple[list[np.ndarray], float]:
+    """Load all frames from a clip. Returns (frames, fps)."""
+    container = av.open(str(clip_path))
+    stream = container.streams.video[0]
+    fps = float(stream.average_rate or 25)
+    frames = [frame.to_ndarray(format="rgb24") for frame in container.decode(video=0)]
+    container.close()
+    return frames, fps
+
+
 def process_video(
     video_id: str, url: str, meta: dict[str, str] | None, playlist_weapon: str
 ) -> list[dict]:
-    """Download video, detect exchanges, trim clips, delete video.
+    """Download video, detect exchanges, trim clips, assess quality, delete video.
 
-    Returns a list of exchange entries for the manifest.
+    Returns a list of exchange entries for the manifest. Rejected exchanges
+    (blade tests, etc.) are not included.
     """
+    weapon = meta["weapon"] if meta else playlist_weapon
+
     # Download
     video_path = download_video(video_id, url)
     if not video_path:
@@ -194,29 +215,42 @@ def process_video(
     size_mb = video_path.stat().st_size / (1024 * 1024)
     print(f"    downloaded ({size_mb:.0f} MB), detecting exchanges...")
 
-    # Detect exchanges
+    # Detect exchanges via touch light detection
     exchanges = detect_exchanges(str(video_path))
     if not exchanges:
         print(f"    no exchanges detected, deleting")
         video_path.unlink(missing_ok=True)
         return []
 
-    print(f"    {len(exchanges)} exchanges found, trimming clips...")
+    print(f"    {len(exchanges)} touches found, trimming and assessing...")
 
-    # Trim each exchange to a clip
+    # Trim each exchange to a clip, then assess quality
     CLIPS_DIR.mkdir(parents=True, exist_ok=True)
     exchange_entries = []
+    rejected = 0
 
     for j, ex in enumerate(exchanges):
         clip_name = f"{video_id}_{j + 1:03d}.mp4"
         clip_path = CLIPS_DIR / clip_name
         duration = ex.clip_end_s - ex.clip_start_s
 
-        if clip_path.exists():
-            clip_size = clip_path.stat().st_size / (1024 * 1024)
-        elif trim_clip(video_path, ex.clip_start_s, duration, clip_path):
-            clip_size = clip_path.stat().st_size / (1024 * 1024)
-        else:
+        # Trim the clip
+        if not clip_path.exists():
+            if not trim_clip(video_path, ex.clip_start_s, duration, clip_path):
+                continue
+
+        clip_size = clip_path.stat().st_size / (1024 * 1024)
+
+        # Assess quality: load clip, run score change + clock detection
+        frames, fps = load_clip_frames(clip_path)
+        # Touch is at 3 seconds into the clip (frame 75 at 25fps)
+        touch_frame = int(3.0 * fps)
+        quality = assess_exchange(frames, touch_frame, fps, weapon)
+
+        if quality.reject:
+            # Remove rejected clips from disk
+            clip_path.unlink(missing_ok=True)
+            rejected += 1
             continue
 
         exchange_entries.append(
@@ -227,15 +261,20 @@ def process_video(
                 "light_onset_s": round(ex.light_onset_s, 2),
                 "clip_start_s": round(ex.clip_start_s, 2),
                 "clip_end_s": round(ex.clip_end_s, 2),
-                "side": ex.side,
+                "light_side": ex.side,
+                "label": quality.label,
+                "weapon": weapon,
                 "size_mb": round(clip_size, 1),
-                "weapon": meta["weapon"] if meta else playlist_weapon,
+                "flags": quality.flags if quality.flags else [],
+                "score_change_frame": quality.score_change.change_frame if quality.score_change else -1,
             }
         )
 
     # Delete the full video
     video_path.unlink(missing_ok=True)
-    print(f"    {len(exchange_entries)} clips saved, full video deleted")
+    print(
+        f"    {len(exchange_entries)} clips saved, {rejected} rejected, full video deleted"
+    )
 
     return exchange_entries
 

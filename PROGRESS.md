@@ -54,10 +54,11 @@ Track B (GPU):       └─→ P4b (independent, GPU-gated)
   - [x] CI green on an empty pipeline
   - [x] `make test` passes, including property tests on a stub rule engine
   - [ ] Annotation tool labels a fixture clip end to end → valid `annotations.parquet`
-  - [ ] `profile/entries/a1-fencing-referee.md` created with every PRD section 15 measure pre-written as empty checkboxes
-  - [ ] Row added to `reference/entry-placement.json`
+  - [x] `profile/entries/a1-fencing-referee.md` created with every PRD section 15 measure pre-written as empty checkboxes
+  - [x] Row added to `reference/entry-placement.json`
   - [ ] Faculty-sponsor email sent (YCRC / NSF ACCESS)
-  - [ ] Corpus acquisition started
+  - [ ] Extraction pipeline validated on fixture clips (score OCR + filters)
+  - [ ] Corpus acquisition started (blocked on pipeline validation)
 - **Steps:**
   - [x] Set up repo structure per PRD section 11 layout
   - [x] Configure uv, pyproject.toml, lock file
@@ -71,11 +72,14 @@ Track B (GPU):       └─→ P4b (independent, GPU-gated)
   - [x] Write apparatus firewall with leakage tests
   - [x] Build exchange auto-extraction pipeline (scripts/extract_exchanges.py)
   - [x] Document FencingVision as primary source (data/manifests/source_channels.yaml)
-  - [ ] Verify fixture clips in annotation tool and label calls
-  - [ ] Create profile entry with PRD section 15 measures
-  - [ ] Add row to entry-placement.json
+  - [x] Verify fixture clips in annotation tool and label calls
+  - [x] Create profile entry with PRD section 15 measures
+  - [x] Add row to entry-placement.json
   - [ ] Draft and send faculty-sponsor email
-  - [ ] Start corpus acquisition (background)
+  - [ ] Build score OCR for FencingVision overlay (validate on fixture clips)
+  - [ ] Build pipeline filters: paused clock, off-camera, no-score-change
+  - [ ] Integrate OCR + filters into acquire_corpus.py
+  - [ ] Start corpus acquisition (blocked on pipeline validation)
 - **Resume context** (written by `/save`):
   - **Last worked:** 2026-08-28T03:45:00Z @danielylee2006
   - **Last commit:** 44975c0 P0: fix fixture clip trimming — frame-accurate seeking and correct timestamps
