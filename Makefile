@@ -34,8 +34,10 @@ fixtures:
 # --- Stubs: implemented in later phases ---
 
 corpus:
-	@echo "S0 corpus acquisition not yet implemented (P1)"
-	@exit 1
+	uv run python scripts/acquire_corpus.py
+
+corpus-dry:
+	uv run python scripts/acquire_corpus.py --dry-run
 
 label:
 	@echo "S1 free supervision not yet implemented (P1)"
