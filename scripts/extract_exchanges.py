@@ -35,6 +35,8 @@ from pathlib import Path
 import av
 import numpy as np
 
+from src.a1.apparatus.score_tracker import detect_overlay_era
+
 
 @dataclass
 class Exchange:
@@ -78,6 +80,9 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
     # Pending touch awaiting second-light check (FIE 300ms lockout window)
     pending_touch: dict | None = None
 
+    # Overlay era — detected from baseline frames
+    overlay_era: str | None = None
+
     def strip_signal(strip: np.ndarray) -> tuple[float, float, float]:
         """Compute red, green, and white-bright signal strength in a strip.
 
@@ -101,15 +106,24 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
         white_pct = float(np.sum(bright & neutral)) / total
         return red_pct, green_pct, white_pct
 
+    # Y-offsets per era (at 720p reference)
+    era_strip_y = {"2025": (648, 663), "2023": (654, 669)}
+
     for i, frame in enumerate(container.decode(video=0)):
         img = frame.to_ndarray(format="rgb24")
         h, w = img.shape[:2]
         sy = h / 720
         sx = w / 1280
 
+        # --- Detect overlay era from baseline frame ---
+        if i == 0 and overlay_era is None:
+            overlay_era = detect_overlay_era(img)
+            print(f"Detected overlay era: {overlay_era}")
+
         # --- Regions ---
-        # Touch indicator strip: horizontal band just ABOVE the overlay bar
-        strip_y1, strip_y2 = int(648 * sy), int(663 * sy)
+        # Touch indicator strip: colored line below the overlay bar
+        ref_y1, ref_y2 = era_strip_y[overlay_era or "2025"]
+        strip_y1, strip_y2 = int(ref_y1 * sy), int(ref_y2 * sy)
         # Left half and right half of the strip
         mid_x = w // 2
         left_strip = img[strip_y1:strip_y2, int(40 * sx) : mid_x, :]
@@ -139,12 +153,16 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
         if pending_touch is not None:
             pt = pending_touch
             if pt["remaining"] > 0:
-                # Check absolute signal level (light is ON, not transitioning)
-                # For red/green: check color dominance
-                # For white: check bright-neutral pixels
-                if pt["side"] == "left" and (right_green > 0.15 or right_white > 0.10):
+                # Check for second light appearing during the lookahead window.
+                # For red/green: absolute color dominance (these are near-zero at rest).
+                # For white: use TRANSITION from the baseline captured when the first
+                # touch fired — the right strip has permanent bright-neutral pixels
+                # (~0.09–0.38) that would always exceed an absolute threshold.
+                right_white_delta = right_white - pt["baseline_right_white"]
+                left_white_delta = left_white - pt["baseline_left_white"]
+                if pt["side"] == "left" and (right_green > 0.15 or right_white_delta > 0.08):
                     pt["side"] = "both"
-                elif pt["side"] == "right" and (left_red > 0.15 or left_white > 0.10):
+                elif pt["side"] == "right" and (left_red > 0.15 or left_white_delta > 0.08):
                     pt["side"] = "both"
                 pt["remaining"] -= 1
 
@@ -243,7 +261,8 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
                 )
                 cooldown_until = i + int(6 * fps)
             else:
-                # Buffer touch — check next 8 frames for second light
+                # Buffer touch — check next 8 frames for second light.
+                # Capture white baselines so lookahead uses transition detection.
                 pending_touch = {
                     "onset_frame": i,
                     "side": touch_side,
@@ -251,6 +270,8 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
                     "clip_start": clip_start,
                     "clip_end": clip_end,
                     "remaining": 8,
+                    "baseline_left_white": left_white,
+                    "baseline_right_white": right_white,
                 }
 
     container.close()

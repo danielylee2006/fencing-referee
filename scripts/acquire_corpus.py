@@ -40,6 +40,7 @@ from extract_exchanges import Exchange, detect_exchanges
 # Import the quality assessment pipeline
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from a1.apparatus.exchange_filter import assess_exchange
+from a1.apparatus.score_tracker import detect_overlay_era
 
 MANIFEST_PATH = Path("data/manifests/source_channels.yaml")
 CLIPS_DIR = Path("data/corpus/clips")
@@ -216,12 +217,18 @@ def process_video(
         video_path.unlink(missing_ok=True)
         return []
 
-    # Get video fps
+    # Get video fps and detect overlay era
     container = av.open(str(video_path))
     fps = float(container.streams.video[0].average_rate or 25)
+    # Detect overlay era from frame ~2 seconds in
+    era = "2025"
+    for fi, fr in enumerate(container.decode(video=0)):
+        if fi == int(2 * fps):
+            era = detect_overlay_era(fr.to_ndarray(format="rgb24"))
+            break
     container.close()
 
-    print(f"    {len(exchanges)} touches found, assessing quality...")
+    print(f"    {len(exchanges)} touches found ({era} overlay), assessing quality...")
 
     # For each exchange: load ~10 seconds of frames around the touch,
     # assess quality, then trim the final clip.
@@ -250,7 +257,7 @@ def process_video(
         # Lookahead bounded by next exchange
         lookahead = len(assess_frames) - touch_frame_local
         quality = assess_exchange(assess_frames, touch_frame_local, fps, weapon,
-                                  lookahead_frames=lookahead)
+                                  lookahead_frames=lookahead, era=era)
 
         if quality.reject:
             rejected += 1
