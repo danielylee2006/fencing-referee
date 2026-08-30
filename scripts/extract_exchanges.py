@@ -35,7 +35,8 @@ from pathlib import Path
 import av
 import numpy as np
 
-from src.a1.apparatus.score_tracker import detect_overlay_era
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+from a1.apparatus.score_tracker import detect_overlay_era
 
 
 @dataclass
