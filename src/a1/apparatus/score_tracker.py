@@ -10,8 +10,8 @@ Only the old (dark blue) FencingVision overlay is supported:
   - Touch indicator strip: y=654-669
 
 X-positions:
-  - Left score: x≈510-580
-  - Right score: x≈700-770
+  - Left score: x≈490-595 (widened to capture both digits of double-digit scores 0-15)
+  - Right score: x≈685-790 (widened to capture both digits of double-digit scores 0-15)
   - Clock: x≈590-690
 
 All positions scale proportionally with frame resolution.
@@ -51,6 +51,10 @@ class OverlayRegions:
 
     Positions are for the old (dark blue) overlay only, at 720p reference resolution:
       bar: y=615-650, score digits: y=617-648, touch strip: y=654-669
+
+    Score x-ranges are widened to cover both digits of any score 0-15:
+      left score digit "1" starts at x≈535, "5" ends at x≈649 (at score 15)
+      right score digit "1" starts at x≈680, "0" ends at x≈746 (at score 10)
     """
 
     bar_top: int
@@ -73,8 +77,8 @@ class OverlayRegions:
         score_y1 = int(617 * sy)
         score_y2 = int(648 * sy)
 
-        ls_x1, ls_x2 = int(510 * sx), int(580 * sx)
-        rs_x1, rs_x2 = int(700 * sx), int(770 * sx)
+        ls_x1, ls_x2 = int(490 * sx), int(595 * sx)
+        rs_x1, rs_x2 = int(685 * sx), int(790 * sx)
 
         clock_x1, clock_x2 = int(590 * sx), int(690 * sx)
 
