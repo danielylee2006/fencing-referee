@@ -4,7 +4,7 @@
 > Updated by the `/save` command. Read by `/start`.
 > Phases are defined in CLAUDE.md section 8 and the PRD.
 
-**Last updated:** 2026-08-29T06:00:00Z
+**Last updated:** 2026-08-31T02:00:00Z
 
 ## Engineers
 
@@ -81,21 +81,52 @@ Track B (GPU):       └─→ P4b (independent, GPU-gated)
   - [x] Build exchange quality assessment module (src/a1/apparatus/exchange_filter.py)
   - [x] Add batch verification mode to annotation tool (--verify flag, N/P navigation)
   - [x] Verify 30 diverse clips from 4 bouts (first verification round)
-  - [ ] Verify 41 clips from single full-video test (GUO vs SAVIN) — in progress, need to resume
-  - [ ] Fix white light detection false positives (brightness>200 threshold still miscalibrated)
+  - [x] Verify 41 clips from single full-video test (GUO vs SAVIN) — completed, but 2025 overlay has persistent white detection issues
+  - [x] Fix white light detection false positives — fixed lookahead (transition-based), added 2023 off-target square detection
+  - [x] Verify 31 clips from 2023 overlay video (PAUTY vs CHOUPENITCH) — all correct
+  - [x] Verify 32 clips from 2023 overlay video (NEMETH vs CHOI) — all correct
+  - [x] Verify 20 mixed clips (10 old overlay + 10 new overlay) — old overlay 10/10, new overlay had label and light_side errors
+  - [x] Decision: drop 2025 (new/grey) overlay support, old overlay only
+  - [x] Remove 2025 overlay code, simplify pipeline to old overlay only
+  - [x] Widen score OCR regions for double-digit scores (0-15)
+  - [ ] Validate pipeline on 3 old-overlay videos (50+ exchanges) — plan written, Task 3 pending
+  - [ ] Update source manifest to old-overlay playlists only — plan written, Task 4 pending
   - [ ] Start corpus acquisition (blocked on pipeline validation)
 - **Resume context** (written by `/save`):
-  - **Last worked:** 2026-08-29T06:00:00Z @danielylee2006
-  - **Last commit:** 37076a4 P0: WIP — OCR-based score detection, improved light detection, batch verification
-  - **Files touched this session:** scripts/acquire_corpus.py, scripts/extract_exchanges.py, src/a1/apparatus/score_tracker.py, src/a1/apparatus/exchange_filter.py, tools/annotate/app.py, tools/annotate/main_window.py, pyproject.toml, uv.lock, data/manifests/corpus_manifest.yaml, data/corpus/verify_full_video.yaml, PROGRESS.md
-  - **Next step:** Resume verification of 41 clips from GUO vs SAVIN (data/corpus/verify_full_video.yaml). Run: `uv run python -m tools.annotate --verify data/corpus/verify_full_video.yaml`. Clip numbering changed from previous run — start from clip 1. White light detection still has false positives (clips 2, 3, 33 in prior run) — may need further tuning based on verification results. Test video is in data/corpus/.tmp/iT5tv5va1Ws.mp4.
+  - **Last worked:** 2026-08-31T02:00:00Z @danielylee2006
+  - **Last commit:** 66cc71c P0: add old-overlay-only implementation plan
+  - **Files touched this session:** scripts/extract_exchanges.py, scripts/acquire_corpus.py, src/a1/apparatus/score_tracker.py, src/a1/apparatus/exchange_filter.py, docs/superpowers/plans/2026-08-31-old-overlay-only.md, data/corpus/verify_full_video.yaml, data/corpus/verify_2023_overlay.yaml, data/corpus/verify_mixed_test.yaml
+  - **Next step:** Execute Tasks 3-4 from `docs/superpowers/plans/2026-08-31-old-overlay-only.md`. Task 3: download a 3rd old-overlay video, run full pipeline on all 3 (50+ exchanges), verify in annotation tool. Task 4: update source manifest to old-overlay playlists only. SDD ledger at `.superpowers/sdd/2026-08-31-old-overlay-only/progress.md` — Tasks 1-2 complete, resume at Task 3.
   - **Open questions / gotchas:**
-    - White light (off-target) detection uses brightness>200 + color-neutral threshold with 8% transition jump. Still produces false positives on some clips and misses real whites on others. The "detect bar appearance first, then classify color" approach was tried but failed — left strip touch signal is only Δ+4 brightness, too small for any threshold. Need better approach or accept imperfect white detection for P0.
-    - OCR-based clock detection now works for blade test rejection (5/41 correctly rejected in test video). But clock detection was completely broken before this session — drift-based approach measured fencer movement, not clock changes.
-    - Score scan is bounded by next exchange's light onset — eliminates bleeding into subsequent exchanges. Works well but means the last exchange in a video uses a 60s fallback window.
-    - EasyOCR added as dependency (brings torch). CI may need updating. Score reading uses 6x upscaling (4x failed on digit "7").
-    - The 41-clip test set includes 6 new exchanges not in the original 37 — these appeared after white light detection was added. Some may be false positive detections that need verification.
-    - Session 3's decision "No full OCR needed" was reversed — pixel counting had only a 3-pixel margin between noise and real changes, causing false positives and missed detections.
+    - 2025 (grey) overlay is now fully unsupported — `is_old_overlay()` gate rejects at pipeline entry. Decision driven by persistent white/off-target detection false positives on new overlay that consumed 2+ days without resolution.
+    - FencingVision switched overlays somewhere in 2024 — not all playlist years are reliable indicators of overlay type. The t5ZK3MAWXwM video is in the "2025 Shanghai" playlist but uses the old overlay. Must check per-video, not per-playlist.
+    - Score OCR regions widened (left x=490-595, right x=685-790) for double-digit scores 0-15. Verified on single and double-digit values.
+    - 2023 off-target (white square at y=670-700) detection uses both immediate check (absolute threshold 0.02 on touch frame) and lookahead transition (0.03 delta). The square can appear 1 frame before the red/green touch, so prev-frame baseline is needed.
+    - Test videos available in data/corpus/.tmp/: old_overlay_sample.mp4 (PAUTY vs CHOUPENITCH), test_2023_foil.mp4 (NEMETH vs CHOI), iT5tv5va1Ws.mp4 (new overlay, for gate testing), test_2025_foil.mp4 (OLIVARES vs CHOUPENITCH — actually old overlay despite "2025" playlist).
+    - Pipeline OCR assessment takes ~30-40s per exchange (~15 min per video with 25-40 exchanges). This is the bottleneck for validation.
+- **Session log — 2026-08-29/31 (session 5):**
+  - BUILT: White light lookahead fix — changed from absolute threshold (>0.10) to transition-based detection (delta from baseline captured at touch onset). Root cause: right strip has permanent bright-neutral pixels (~0.09-0.38) that always exceeded the absolute threshold, falsely upgrading left-only touches to "both".
+  - BUILT: Overlay era auto-detection (`detect_overlay_era()`) — samples bar background color at y=625-635. Old overlay (dark blue) has brightness ~149 with B > R; new overlay (grey) has brightness ~176. Threshold at 160.
+  - BUILT: Dual-era overlay support (2023 y=654-669, 2025 y=648-663) — later removed in favor of old-overlay-only.
+  - BUILT: 2023 off-target square detection at y=670-700. The old overlay shows off-target as a small white square (36×24px at x=782-817) below the bar, unlike the 2025 overlay which uses a white line in the touch strip. Two detection paths: immediate check (absolute >0.02 on touch frame) and lookahead transition (delta >0.03).
+  - BUILT: Score OCR regions widened from 70px to 105px (left x=490-595, right x=685-790) to capture double-digit scores 0-15. Previous 70px regions clipped trailing digits of "11", "14", etc.
+  - BUILT: Old-overlay-only pipeline simplification — removed all 2025 era code, `is_old_overlay()` gate rejects new overlay videos at pipeline entry.
+  - BUG: White detection lookahead used absolute thresholds (right_white > 0.10) but right strip has permanent bright-neutral pixels. Fixed: transition-based detection using baseline captured at touch onset.
+  - BUG: 2023 off-target square appeared 1 frame BEFORE the red touch in NEMETH vs CHOI video. Transition-based lookahead missed it because baseline already included the square. Fixed: immediate absolute check (>0.02) on the touch frame itself, plus prev-frame baseline for lookahead.
+  - BUG: Score OCR read "10" instead of "11" and "12" instead of "14" at high scores. Root cause: score region x=510-580 (70px) too narrow for double-digit numbers. Fixed: widened to x=490-595 (105px).
+  - BUG: extract_exchanges.py import `from src.a1.apparatus...` failed when run as a script (ModuleNotFoundError). Fixed: added `sys.path.insert(0, ...)` matching acquire_corpus.py pattern.
+  - BUG: Video t5ZK3MAWXwM from "2025 Shanghai" playlist actually uses the old overlay (brightness 148). Playlist year is not a reliable indicator of overlay era.
+  - DECISION: Drop 2025 (grey) overlay support entirely. After 2+ days of white/off-target detection work, the 2025 overlay still had light_side errors on 2/5 tested clips. The 2023 overlay went 10/10 clean on every test. Old overlay has cleaner separation: distinct colored lines, off-target as separate white square. Reduces code complexity and increases reliability.
+  - DECISION: Off-target detection uses both absolute threshold (0.02, for same-frame appearance) and transition threshold (0.03, for delayed appearance). The square can appear anywhere from 1 frame before to 6 frames after the red/green touch.
+  - DECISION: Score OCR regions need ~105px width to handle scores 0-15 reliably. Measured actual digit positions: left "15" spans x≈535-649, right "10" spans x≈680-746.
+  - LEARNED: FencingVision has exactly two overlay designs across its entire channel history. The old overlay (dark blue, pre-2024) has reliable, consistent touch indicators. The new overlay (grey, 2024+) has ambient bright-neutral pixels that confound white detection.
+  - LEARNED: The old overlay's off-target indicator (white square) is in a completely different y-region (y=674-695) from the touch indicator strip (y=657-666). It's 36×24 pixels, covering only ~6% of the half-strip width — too small for the 8% transition threshold used for the white line in 2025.
+  - LEARNED: Red/green color detection (R-G dominance > 50, transition > 20%) is very robust across both overlay eras. Mean R-G gap is ~180-210 points, well above the 50 threshold. Coverage is ~40-69% of strip pixels when active.
+  - LEARNED: The 2023 overlay touch indicators fire at y=657-666 with a weaker leading edge at y=654. The old overlay bar is at y=615-650 (vs 2025 at y=607-647).
+  - LEARNED: FencingVision switched overlays sometime during 2024, not cleanly at a year boundary. Some 2025-playlist videos use the old overlay.
+  - DEFERRED: Full pipeline validation on 3 old-overlay videos (50+ exchanges) — Task 3 in plan.
+  - DEFERRED: Source manifest update to old-overlay playlists only — Task 4 in plan.
+  - DEFERRED: Corpus acquisition start — blocked on pipeline validation.
 - **Session log — 2026-08-28/29 (session 4):**
   - BUILT: Score tracker rewritten from pixel-counting to OCR (EasyOCR). Reads actual score digits (0-15) with 6x upscaling. Eliminates false positives from overlay glow artifacts that plagued the binarized approach.
   - BUILT: Clock detection rewritten from drift-based to OCR. Reads clock at two points — if same value, clock is stopped (blade test). Drift approach was measuring fencer movement, not clock changes.
