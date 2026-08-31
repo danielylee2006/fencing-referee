@@ -52,7 +52,6 @@ def assess_exchange(
     fps: float,
     weapon: str = "foil",
     lookahead_frames: int | None = None,
-    era: str = "2025",
 ) -> ExchangeQuality:
     """Assess the quality of a detected exchange.
 
@@ -61,6 +60,7 @@ def assess_exchange(
         touch_frame: frame where the touch light was detected
         fps: video frame rate
         weapon: "foil", "sabre", or "epee"
+        lookahead_frames: max frames to scan for score change (default: all remaining)
 
     Returns:
         ExchangeQuality with reject/flag decisions and detected label
@@ -73,7 +73,7 @@ def assess_exchange(
         return result
 
     h, w = frames[0].shape[:2]
-    regions = OverlayRegions.from_frame_size(h, w, era=era)
+    regions = OverlayRegions.from_frame_size(h, w)
 
     # --- Step 1: Check clock before touch ---
     # Read clock at two points ~2 seconds apart before the touch.

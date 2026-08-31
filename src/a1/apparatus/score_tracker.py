@@ -4,25 +4,18 @@ Uses OCR (EasyOCR) to read actual score digits, then compares before/after
 a touch to determine which side scored. Also detects paused clock
 (equipment test / blade test filter).
 
-FencingVision uses two overlay designs across its channel history:
+Only the old (dark blue) FencingVision overlay is supported:
+  - Dark blue bar: y=615-650
+  - Score digits: y=617-648
+  - Touch indicator strip: y=654-669
 
-  2025 overlay (light grey bar):
-    - Grey bar: y=607-647
-    - Score digits: y=609-645
-    - Touch indicator strip: y=648-663
-
-  2023 overlay (dark blue bar):
-    - Dark blue bar: y=615-650
-    - Score digits: y=617-648
-    - Touch indicator strip: y=654-669
-
-X-positions are identical across both eras:
+X-positions:
   - Left score: x≈510-580
   - Right score: x≈700-770
   - Clock: x≈590-690
 
 All positions scale proportionally with frame resolution.
-The overlay era is auto-detected from bar background color.
+Videos using the new (grey) overlay are rejected at the pipeline entry point.
 """
 
 from __future__ import annotations
@@ -34,14 +27,11 @@ import cv2
 import numpy as np
 
 
-def detect_overlay_era(frame: np.ndarray) -> str:
-    """Detect which FencingVision overlay design is present.
+def is_old_overlay(frame: np.ndarray) -> bool:
+    """Check if a frame uses the supported old (dark blue) FencingVision overlay.
 
-    Samples the bar region at y=625-635 across the middle 50% of the frame.
-    The 2023 overlay has a dark blue bar (brightness ~149, B > R).
-    The 2025 overlay has a neutral grey bar (brightness ~176).
-
-    Returns "2023" or "2025".
+    The old overlay has a dark blue bar (brightness ~149, B > R).
+    The unsupported new overlay has a neutral grey bar (brightness ~176).
     """
     h, w = frame.shape[:2]
     sy = h / 720.0
@@ -50,33 +40,18 @@ def detect_overlay_era(frame: np.ndarray) -> str:
     x1, x2 = int(320 * sx), int(960 * sx)
     bar_sample = frame[y1:y2, x1:x2, :]
     r = float(bar_sample[:, :, 0].mean())
-    g = float(bar_sample[:, :, 1].mean())
     b = float(bar_sample[:, :, 2].mean())
-    brightness = (r + g + b) / 3
-    if brightness < 160 and b > r:
-        return "2023"
-    return "2025"
-
-
-# Y-offsets for each overlay era (at 720p reference resolution).
-# X-positions are identical across eras.
-_ERA_Y_OFFSETS: dict[str, dict[str, int]] = {
-    "2025": {
-        "bar_top": 607, "bar_bottom": 647,
-        "score_y1": 609, "score_y2": 645,
-        "strip_y1": 648, "strip_y2": 663,
-    },
-    "2023": {
-        "bar_top": 615, "bar_bottom": 650,
-        "score_y1": 617, "score_y2": 648,
-        "strip_y1": 654, "strip_y2": 669,
-    },
-}
+    brightness = (r + float(bar_sample[:, :, 1].mean()) + b) / 3
+    return brightness < 160 and b > r
 
 
 @dataclass
 class OverlayRegions:
-    """Pixel regions for the FencingVision overlay, proportional to frame size."""
+    """Pixel regions for the FencingVision overlay, proportional to frame size.
+
+    Positions are for the old (dark blue) overlay only, at 720p reference resolution:
+      bar: y=615-650, score digits: y=617-648, touch strip: y=654-669
+    """
 
     bar_top: int
     bar_bottom: int
@@ -85,31 +60,26 @@ class OverlayRegions:
     clock: tuple[int, int, int, int]
     left_strip: tuple[int, int, int, int]  # touch indicator strip regions
     right_strip: tuple[int, int, int, int]
-    era: str = "2025"
 
     @classmethod
-    def from_frame_size(
-        cls, h: int, w: int, era: str = "2025",
-    ) -> "OverlayRegions":
+    def from_frame_size(cls, h: int, w: int) -> "OverlayRegions":
         """Compute overlay regions from known FencingVision proportions."""
         sy = h / 720.0
         sx = w / 1280.0
 
-        offsets = _ERA_Y_OFFSETS[era]
+        bar_top = int(615 * sy)
+        bar_bottom = int(650 * sy)
 
-        bar_top = int(offsets["bar_top"] * sy)
-        bar_bottom = int(offsets["bar_bottom"] * sy)
-
-        score_y1 = int(offsets["score_y1"] * sy)
-        score_y2 = int(offsets["score_y2"] * sy)
+        score_y1 = int(617 * sy)
+        score_y2 = int(648 * sy)
 
         ls_x1, ls_x2 = int(510 * sx), int(580 * sx)
         rs_x1, rs_x2 = int(700 * sx), int(770 * sx)
 
         clock_x1, clock_x2 = int(590 * sx), int(690 * sx)
 
-        strip_y1 = int(offsets["strip_y1"] * sy)
-        strip_y2 = int(offsets["strip_y2"] * sy)
+        strip_y1 = int(654 * sy)
+        strip_y2 = int(669 * sy)
         mid_x = w // 2
 
         return cls(
@@ -120,7 +90,6 @@ class OverlayRegions:
             clock=(score_y1, score_y2, clock_x1, clock_x2),
             left_strip=(strip_y1, strip_y2, int(40 * sx), mid_x),
             right_strip=(strip_y1, strip_y2, mid_x, int(1240 * sx)),
-            era=era,
         )
 
 

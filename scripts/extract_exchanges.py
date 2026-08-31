@@ -1,5 +1,8 @@
 """Extract exchange timestamps from FencingVision videos.
 
+Only the old (dark blue) FencingVision overlay is supported. Videos using
+the new (grey) overlay are rejected immediately with a warning.
+
 Detects touches by finding frames where:
 1. A colored line (red/green/white) appears ABOVE the FencingVision overlay bar.
    This line spans the fencer's side and indicates a touch was registered.
@@ -13,13 +16,13 @@ Usage:
     uv run python scripts/extract_exchanges.py <video_path_or_url>
     uv run python scripts/extract_exchanges.py --output <dir> <video_path_or_url>
 
-The FencingVision overlay:
-- Bottom bar (~y=665-710 in 720p): fencer names, scores, clock
-- Touch indicator: colored line appears ABOVE the bar (~y=650-665)
+The old FencingVision overlay (dark blue bar, y=615-650 at 720p):
+- Touch indicator strip: y=654-669
   - Red line = left fencer's touch (valid, on-target)
   - Green line = right fencer's touch (valid, on-target)
   - White line = off-target touch
   - Both red+green = double touch
+- Off-target square: small white square at y=670-700 below the bar
 - Score digits change after the referee awards the point
 """
 
@@ -36,7 +39,7 @@ import av
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from a1.apparatus.score_tracker import detect_overlay_era
+from a1.apparatus.score_tracker import is_old_overlay
 
 
 @dataclass
@@ -81,8 +84,9 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
     # Pending touch awaiting second-light check (FIE 300ms lockout window)
     pending_touch: dict | None = None
 
-    # Overlay era — detected from baseline frames
-    overlay_era: str | None = None
+    # Previous frame's off-target square signals
+    prev_left_offtarget: float = 0.0
+    prev_right_offtarget: float = 0.0
 
     def strip_signal(strip: np.ndarray) -> tuple[float, float, float]:
         """Compute red, green, and white-bright signal strength in a strip.
@@ -107,24 +111,23 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
         white_pct = float(np.sum(bright & neutral)) / total
         return red_pct, green_pct, white_pct
 
-    # Y-offsets per era (at 720p reference)
-    era_strip_y = {"2025": (648, 663), "2023": (654, 669)}
-
     for i, frame in enumerate(container.decode(video=0)):
         img = frame.to_ndarray(format="rgb24")
         h, w = img.shape[:2]
         sy = h / 720
         sx = w / 1280
 
-        # --- Detect overlay era from baseline frame ---
-        if i == 0 and overlay_era is None:
-            overlay_era = detect_overlay_era(img)
-            print(f"Detected overlay era: {overlay_era}")
+        # --- Gate: reject unsupported overlay on frame 0 ---
+        if i == 0:
+            if not is_old_overlay(img):
+                print("Skipping: unsupported overlay (not old FencingVision)")
+                container.close()
+                return []
 
         # --- Regions ---
-        # Touch indicator strip: colored line below the overlay bar
-        ref_y1, ref_y2 = era_strip_y[overlay_era or "2025"]
-        strip_y1, strip_y2 = int(ref_y1 * sy), int(ref_y2 * sy)
+        # Touch indicator strip: colored line below the overlay bar (old overlay only)
+        # Old overlay strip: y=654-669 at 720p reference
+        strip_y1, strip_y2 = int(654 * sy), int(669 * sy)
         # Left half and right half of the strip
         mid_x = w // 2
         left_strip = img[strip_y1:strip_y2, int(40 * sx) : mid_x, :]
@@ -148,6 +151,16 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
         left_red, left_green, left_white = strip_signal(left_strip)
         right_red, right_green, right_white = strip_signal(right_strip)
 
+        # Off-target square region: small white square below the bar at y=670-700.
+        # Computed each frame, checked during touch lookahead.
+        ot_y1, ot_y2 = int(670 * sy), int(700 * sy)
+        _, _, cur_left_offtarget = strip_signal(
+            img[ot_y1:ot_y2, int(40 * sx) : mid_x, :]
+        )
+        _, _, cur_right_offtarget = strip_signal(
+            img[ot_y1:ot_y2, mid_x : int(1240 * sx), :]
+        )
+
         # --- Check pending touch for second light ---
         # FIE allows 300ms (≈8 frames at 25fps) between first and second hit.
         # Check if the other light appears within this window.
@@ -165,6 +178,17 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
                     pt["side"] = "both"
                 elif pt["side"] == "right" and (left_red > 0.15 or left_white_delta > 0.08):
                     pt["side"] = "both"
+
+                # Off-target square: small white square at y=670-700, below the
+                # touch strip. Too small to trigger the 8% strip threshold.
+                # Check this region with a lower threshold (3%).
+                if pt["side"] != "both":
+                    if pt["side"] == "left":
+                        if cur_right_offtarget - pt["baseline_right_offtarget"] > 0.03:
+                            pt["side"] = "both"
+                    elif pt["side"] == "right":
+                        if cur_left_offtarget - pt["baseline_left_offtarget"] > 0.03:
+                            pt["side"] = "both"
                 pt["remaining"] -= 1
 
                 if pt["remaining"] > 0 and pt["side"] != "both":
@@ -172,6 +196,8 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
                     prev_right_green = right_green
                     prev_left_white_bright = left_white
                     prev_right_white_bright = right_white
+                    prev_left_offtarget = cur_left_offtarget
+                    prev_right_offtarget = cur_right_offtarget
                     continue
 
             # Window expired or second light found — commit the exchange
@@ -194,6 +220,8 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
             prev_right_green = right_green
             prev_left_white_bright = left_white
             prev_right_white_bright = right_white
+            prev_left_offtarget = cur_left_offtarget
+            prev_right_offtarget = cur_right_offtarget
             continue
 
         # --- Detect touch indicator line ---
@@ -224,6 +252,8 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
         prev_right_green = right_green
         prev_left_white_bright = left_white
         prev_right_white_bright = right_white
+        prev_left_offtarget = cur_left_offtarget
+        prev_right_offtarget = cur_right_offtarget
 
         # Determine if a touch happened (red, green, or white)
         touch_detected = False
@@ -264,6 +294,37 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
             else:
                 # Buffer touch — check next 8 frames for second light.
                 # Capture white baselines so lookahead uses transition detection.
+                #
+                # Off-target square: also check immediately. The square can appear
+                # on the same frame as the touch or 1 frame before, making
+                # transition detection during lookahead impossible. If the off-target
+                # region currently has bright-neutral pixels above a low absolute
+                # threshold, the square is already present.
+                if touch_side == "left" and cur_right_offtarget > 0.02:
+                    touch_side = "both"
+                elif touch_side == "right" and cur_left_offtarget > 0.02:
+                    touch_side = "both"
+                if touch_side == "both":
+                    exchanges.append(
+                        Exchange(
+                            light_onset_frame=i,
+                            score_update_frame=i + int(5 * fps),
+                            light_onset_s=light_s,
+                            score_update_s=light_s + 5.0,
+                            clip_start_s=clip_start,
+                            clip_end_s=clip_end,
+                            side="both",
+                        )
+                    )
+                    cooldown_until = i + int(6 * fps)
+                    prev_left_red = left_red
+                    prev_right_green = right_green
+                    prev_left_white_bright = left_white
+                    prev_right_white_bright = right_white
+                    prev_left_offtarget = cur_left_offtarget
+                    prev_right_offtarget = cur_right_offtarget
+                    continue
+
                 pending_touch = {
                     "onset_frame": i,
                     "side": touch_side,
@@ -273,6 +334,8 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
                     "remaining": 8,
                     "baseline_left_white": left_white,
                     "baseline_right_white": right_white,
+                    "baseline_left_offtarget": prev_left_offtarget,
+                    "baseline_right_offtarget": prev_right_offtarget,
                 }
 
     container.close()
