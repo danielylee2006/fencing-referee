@@ -281,14 +281,6 @@ Together, these components turn raw fencing broadcasts into a controlled machine
 
 ---
 
-## Status
-
-**Completed scope:** P0–P3  
-**Current focus:** corpus / supervision pipeline, leakage-resistant training, and generalization evaluation  
-**Project type:** self-directed research  
-**Status:** ongoing
-
-
 ## Attribution
 
 This project builds on and cites the following prior work:
