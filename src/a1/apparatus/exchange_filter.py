@@ -76,8 +76,6 @@ def assess_exchange(
     regions = OverlayRegions.from_frame_size(h, w)
 
     # --- Step 1: Check clock before touch ---
-    # Read clock at two points ~2 seconds apart before the touch.
-    # If the clock reads the same value, it's stopped (blade test).
     clock_start = max(0, touch_frame - 50)
     clock_end = touch_frame
     result.clock_running_before = clock_is_running(
@@ -90,10 +88,13 @@ def assess_exchange(
         return result
 
     # --- Step 2: Detect score change via OCR ---
+    # Skip the clock check inside detect_score_change since we already
+    # verified it above.
     la = lookahead_frames if lookahead_frames is not None else len(frames) - touch_frame
     result.score_change = detect_score_change(
         frames, touch_frame, fps, regions, lookback_frames=25,
         lookahead_frames=la,
+        skip_clock_check=True,
     )
 
     # --- Step 3: Determine label ---
@@ -118,8 +119,29 @@ def assess_exchange(
         if delay > 6.0:
             result.flags.append("late_score_change")
     elif sc.side == "both":
-        # Both scores changed — unusual, might be a detection error
-        result.label = "NONE"
-        result.flags.append("both_scores_changed")
+        # Both scores changed. Common cause: the bout-winning touch
+        # makes one score go up while the overlay resets the other to 0.
+        # If one side went up and the other went down (or to 0), the
+        # side that went up is the real point.
+        left_up = (
+            sc.left_before is not None
+            and sc.left_after is not None
+            and sc.left_after > sc.left_before
+        )
+        right_up = (
+            sc.right_before is not None
+            and sc.right_after is not None
+            and sc.right_after > sc.right_before
+        )
+        if left_up and not right_up:
+            result.label = "LEFT"
+            result.flags.append("both_scores_changed")
+        elif right_up and not left_up:
+            result.label = "RIGHT"
+            result.flags.append("both_scores_changed")
+        else:
+            # Both went up or can't determine — flag for review
+            result.label = "NONE"
+            result.flags.append("both_scores_changed")
 
     return result

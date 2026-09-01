@@ -39,7 +39,7 @@ import av
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from a1.apparatus.score_tracker import is_old_overlay
+from a1.apparatus.score_tracker import has_clock, is_old_overlay
 
 
 @dataclass
@@ -117,10 +117,14 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
         sy = h / 720
         sx = w / 1280
 
-        # --- Gate: reject unsupported overlay on frame 0 ---
+        # --- Gate: reject unsupported overlay or missing clock on frame 0 ---
         if i == 0:
             if not is_old_overlay(img):
                 print("Skipping: unsupported overlay (not old FencingVision)")
+                container.close()
+                return []
+            if not has_clock(img):
+                print("Skipping: no clock in overlay (cannot detect blade tests)")
                 container.close()
                 return []
 
@@ -174,9 +178,9 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
                 # (~0.09–0.38) that would always exceed an absolute threshold.
                 right_white_delta = right_white - pt["baseline_right_white"]
                 left_white_delta = left_white - pt["baseline_left_white"]
-                if pt["side"] == "left" and (right_green > 0.15 or right_white_delta > 0.08):
+                if pt["side"] == "left" and (right_green > 0.15 or right_white_delta > 0.12):
                     pt["side"] = "both"
-                elif pt["side"] == "right" and (left_red > 0.15 or left_white_delta > 0.08):
+                elif pt["side"] == "right" and (left_red > 0.15 or left_white_delta > 0.12):
                     pt["side"] = "both"
 
                 # Off-target square: small white square at y=670-700, below the
@@ -227,8 +231,10 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
         # --- Detect touch indicator line ---
         # Detect TRANSITIONS: compare against previous frame's signal.
         # Red/green: color dominance transition (>20% jump)
-        # White: bright-neutral pixel fraction transition (>8% jump,
-        #   with higher brightness threshold of 200 to avoid false positives)
+        # White: bright-neutral pixel fraction transition (>12% jump).
+        #   Higher threshold than red/green because brief bright flashes
+        #   (overlay artifacts) can reach ~8% but real white off-target
+        #   lines are much stronger.
         left_color = ""
         right_color = ""
 
@@ -237,13 +243,13 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
             if left_red - prev_left_red > 0.20:
                 left_color = "red"
             # White (off-target) on left side
-            elif left_white - prev_left_white_bright > 0.08:
+            elif left_white - prev_left_white_bright > 0.12:
                 left_color = "white"
             # Green touch line on right side
             if right_green - prev_right_green > 0.20:
                 right_color = "green"
             # White (off-target) on right side
-            elif right_white - prev_right_white_bright > 0.08:
+            elif right_white - prev_right_white_bright > 0.12:
                 right_color = "white"
 
         prev_left_red = left_red
@@ -295,14 +301,14 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
                 # Buffer touch — check next 8 frames for second light.
                 # Capture white baselines so lookahead uses transition detection.
                 #
-                # Off-target square: also check immediately. The square can appear
-                # on the same frame as the touch or 1 frame before, making
-                # transition detection during lookahead impossible. If the off-target
-                # region currently has bright-neutral pixels above a low absolute
-                # threshold, the square is already present.
-                if touch_side == "left" and cur_right_offtarget > 0.02:
+                # Off-target square: check for a sudden appearance using
+                # transition from previous frame. The absolute threshold
+                # of 0.02 was too low — ambient off-target region brightness
+                # reaches 0.02-0.15 normally. A real off-target square
+                # produces a sharp delta (>0.03) from the previous frame.
+                if touch_side == "left" and cur_right_offtarget - prev_right_offtarget > 0.03:
                     touch_side = "both"
-                elif touch_side == "right" and cur_left_offtarget > 0.02:
+                elif touch_side == "right" and cur_left_offtarget - prev_left_offtarget > 0.03:
                     touch_side = "both"
                 if touch_side == "both":
                     exchanges.append(

@@ -45,6 +45,30 @@ def is_old_overlay(frame: np.ndarray) -> bool:
     return brightness < 160 and b > r
 
 
+def has_clock(frame: np.ndarray) -> bool:
+    """Check if the overlay has a visible clock in the clock region.
+
+    Some FencingVision old-overlay videos display no clock at all — the
+    clock region is a bright blank area (~220 mean brightness). Videos
+    with a clock (running or paused) have brightness ~170-184 and OCR
+    can read time values like '3:00'.
+
+    Without a clock, blade tests cannot be detected (no paused-clock
+    filter), so clockless videos must be skipped.
+    """
+    h, w = frame.shape[:2]
+    regions = OverlayRegions.from_frame_size(h, w)
+    crop = extract_region(frame, regions.clock)
+    brightness = float(crop.mean())
+    # Clockless videos: brightness ~220. Clock present: ~170-184.
+    # Threshold at 200 gives clear separation.
+    if brightness > 200:
+        return False
+    # Double-check with OCR — if brightness is borderline, try to read it
+    val = _read_clock(frame, regions.clock)
+    return val is not None
+
+
 @dataclass
 class OverlayRegions:
     """Pixel regions for the FencingVision overlay, proportional to frame size.
@@ -208,6 +232,7 @@ def detect_score_change(
     regions: OverlayRegions | None = None,
     lookback_frames: int = 25,
     lookahead_frames: int = 100,
+    skip_clock_check: bool = False,
 ) -> ScoreChange:
     """Detect which side's score changes after a touch using OCR.
 
@@ -221,6 +246,8 @@ def detect_score_change(
         regions: overlay regions (computed from frame size if None)
         lookback_frames: frames before touch to read baseline score
         lookahead_frames: frames after touch to scan for score change
+        skip_clock_check: if True, skip the clock OCR check (caller
+            already verified the clock is running)
 
     Returns:
         ScoreChange with the detected side, timing, and score values
@@ -238,9 +265,12 @@ def detect_score_change(
     right_before = read_score(frames[baseline_frame], regions.right_score)
 
     # Check clock via OCR — read at two points before the touch
-    clock_start = max(0, touch_frame - 50)
-    clock_end = touch_frame
-    clock_running = clock_is_running(frames, regions, clock_start, clock_end)
+    if skip_clock_check:
+        clock_running = True
+    else:
+        clock_start = max(0, touch_frame - 50)
+        clock_end = touch_frame
+        clock_running = clock_is_running(frames, regions, clock_start, clock_end)
 
     if left_before is None and right_before is None:
         return ScoreChange(
@@ -253,7 +283,10 @@ def detect_score_change(
     # onset, which is the hard boundary of this exchange. Any score
     # change after the next light fires belongs to a different exchange.
     #
-    # Strategy: scan at 1-second intervals via OCR.
+    # Strategy: scan at 1-second intervals. Use cheap pixel-diff to
+    # detect if the score region changed, then confirm with OCR only
+    # on frames where pixels actually moved. This cuts OCR calls from
+    # ~20-60 per exchange down to ~2-4.
     scan_end = min(touch_frame + lookahead_frames, len(frames))
     step = max(1, int(fps))  # ~1 second intervals
 
@@ -262,17 +295,44 @@ def detect_score_change(
     left_after = left_before
     right_after = right_before
 
+    # Capture baseline pixel snapshots for cheap diff comparison.
+    # Convert to float32 once to avoid repeated casts in the loop.
+    baseline_left_pixels = extract_region(
+        frames[baseline_frame], regions.left_score,
+    ).astype(np.float32)
+    baseline_right_pixels = extract_region(
+        frames[baseline_frame], regions.right_score,
+    ).astype(np.float32)
+
+    # Pixel-diff threshold: a score digit change produces a mean
+    # absolute diff of ~5.7-8.8 across the region. No-change noise
+    # (overlay glow, compression) is ~2.0-4.3. Threshold at 5.0
+    # sits in the gap between noise max and change min.
+    PIXEL_DIFF_THRESHOLD = 5.0
+
     for i in range(touch_frame, scan_end, step):
-        l = read_score(frames[i], regions.left_score)
-        r = read_score(frames[i], regions.right_score)
+        # Cheap pixel-diff gate: skip OCR if pixels haven't changed
+        if left_changed_frame < 0 and left_before is not None:
+            left_pixels = extract_region(
+                frames[i], regions.left_score,
+            ).astype(np.float32)
+            left_diff = float(np.mean(np.abs(left_pixels - baseline_left_pixels)))
+            if left_diff > PIXEL_DIFF_THRESHOLD:
+                l = read_score(frames[i], regions.left_score)
+                if l is not None and l != left_before:
+                    left_changed_frame = i
+                    left_after = l
 
-        if left_changed_frame < 0 and l is not None and left_before is not None and l != left_before:
-            left_changed_frame = i
-            left_after = l
-
-        if right_changed_frame < 0 and r is not None and right_before is not None and r != right_before:
-            right_changed_frame = i
-            right_after = r
+        if right_changed_frame < 0 and right_before is not None:
+            right_pixels = extract_region(
+                frames[i], regions.right_score,
+            ).astype(np.float32)
+            right_diff = float(np.mean(np.abs(right_pixels - baseline_right_pixels)))
+            if right_diff > PIXEL_DIFF_THRESHOLD:
+                r = read_score(frames[i], regions.right_score)
+                if r is not None and r != right_before:
+                    right_changed_frame = i
+                    right_after = r
 
         if left_changed_frame >= 0 and right_changed_frame >= 0:
             break
