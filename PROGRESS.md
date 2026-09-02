@@ -4,7 +4,7 @@
 > Updated by the `/save` command. Read by `/start`.
 > Phases are defined in CLAUDE.md section 8 and the PRD.
 
-**Last updated:** 2026-09-01T08:00:00Z
+**Last updated:** 2026-09-02T13:00:00Z
 
 ## Engineers
 
@@ -90,23 +90,56 @@ Track B (GPU):       └─→ P4b (independent, GPU-gated)
   - [x] Remove 2025 overlay code, simplify pipeline to old overlay only
   - [x] Widen score OCR regions for double-digit scores (0-15)
   - [x] Validate pipeline on old-overlay video (35 exchanges, LEE vs KIEFER) — 34/35 correct (97%), 1 light_side error fixed
-  - [ ] Update source manifest to old-overlay + clock playlists only
-  - [ ] Start corpus acquisition (blocked on manifest update)
+  - [x] Update source manifest to foil-only (old-overlay + clock playlists)
+  - [x] Build secondary test pipeline (scripts/secondary_test.py) — diverse clip extraction + verification
+  - [x] Secondary test: foil validated (20/20 clips correct, NAGANO vs LEE, 2024 Torino)
+  - [x] Add light_detail field to Exchange dataclass (tracks per-side light colors)
+  - [x] Two-phase corpus acquisition (enumerate + process) with retry/backoff and cookie support
+  - [x] Skip clock check for sabre in exchange_filter and detect_exchanges
+  - [ ] Investigate sabre/epee overlay detection for P3/P7 (FencingVision uses non-blue overlay)
+  - [ ] Start corpus acquisition (blocked on secondary testing completion)
 - **Resume context** (written by `/save`):
-  - **Last worked:** 2026-09-01T08:00:00Z @danielylee2006
-  - **Last commit:** 15f6196 clock gate, OCR optimization, detection threshold fixes
-  - **Files touched this session:** src/a1/apparatus/score_tracker.py, src/a1/apparatus/exchange_filter.py, scripts/extract_exchanges.py, pyproject.toml, LICENSE (deleted), data/corpus/verify_old_overlay_validation.yaml, data/corpus/verify_optimized.yaml, data/corpus/verify_full_validation.yaml
-  - **Next step:** Update source manifest to old-overlay + clock playlists only (5 of 9 usable). Then start corpus acquisition.
+  - **Last worked:** 2026-09-02T13:00:00Z @danielylee2006
+  - **Last commit:** b94ec6e foil-only manifest, light_detail field, two-phase corpus acquisition
+  - **Files touched this session:** data/manifests/source_channels.yaml, scripts/acquire_corpus.py, scripts/extract_exchanges.py, scripts/secondary_test.py (new), src/a1/apparatus/exchange_filter.py, src/a1/apparatus/score_tracker.py, data/corpus/secondary_test/ (20 foil clips + verify YAML)
+  - **Next step:** Start corpus acquisition on foil-only manifest (3 playlists). Run `--enumerate` first, then process from queue. Use `--cookies chrome` for rate limit mitigation.
   - **Open questions / gotchas:**
-    - `has_clock()` gate now rejects videos without a visible clock (brightness >200 in clock region). The 2023 Shanghai Foil playlist is entirely clockless — must be excluded from the manifest.
-    - Usable playlists (old overlay + clock): 2025 Shanghai Foil (mixed overlay), 2024 Shanghai Foil, 2024 Torino Foil, 2025 Seoul Sabre, 2025 Bogota Epee. Non-usable: 2025 Torino Foil (new overlay), 2025 Plovdiv Sabre (new overlay), 2025 Budapest Epee (new overlay), 2023 Shanghai Foil (no clock).
-    - OCR optimized with pixel-diff pre-filter: score OCR assessment dropped from ~812s to ~537s per video (35 exchanges). Per-exchange OCR calls reduced from ~120 to ~5 (2 baseline + 2 clock + 1 confirmed change).
-    - Off-target detection changed from absolute threshold (0.02) to transition-based (delta >0.03 from previous frame). Ambient off-target region brightness reaches 0.02-0.15 normally, causing false "both" detections with the old threshold.
-    - White strip transition threshold raised from 0.08 to 0.12 — brief overlay artifacts can reach ~8% but real white off-target lines are much stronger.
-    - Bout-ending score reset handled: when both scores change but one goes down (e.g., 10→0 reset), the side that went up is the real point.
-    - Estimated corpus acquisition time: ~2.5 days for ~470 videos (5 usable playlists, assuming ~50% pass both gates).
-    - Test videos in data/corpus/.tmp/: old_overlay_sample.mp4 (PAUTY, has clock), test_2023_foil.mp4 (NEMETH, no clock), test_2023_foil_v3.mp4 (FOCONI, no clock), timed_test.mp4 (LEE vs KIEFER, has clock — fully validated 35/35).
-    - Full pipeline validation on LEE vs KIEFER: 35 exchanges, 34/35 correct before fixes, 35/35 after fixes (both_scores_changed + light_side off-target threshold).
+    - FencingVision uses a blue-dominant overlay bar ONLY for foil. Sabre and epee have neutral/reddish bars (B≈R) that fail the B>R check. This is a cross-weapon overlay difference, not an era difference.
+    - Sabre doesn't use the bout clock — clock stays paused between touches. Clock check must be skipped for sabre in both detect_exchanges and exchange_filter. Already implemented.
+    - Pre-2023 FencingVision videos may be 360p instead of 720p, with different overlay layouts. The pipeline is calibrated for 720p only.
+    - YouTube rate limits hit during playlist enumeration. Two-phase acquisition (enumerate once, process from queue) mitigates this. Cookie support (`--cookies chrome`) helps but chrome keychain access may warn.
+    - yt-dlp may need `--remote-components ejs:github` flag for some videos (JS challenge solver).
+    - Corpus is foil-only for P0/P1. Sabre and epee overlay detection is a separate task for P3/P7.
+    - Foil secondary test: 20/20 clips correct on NAGANO vs LEE (2024 Torino T64). Pipeline validated.
+    - Estimated corpus: 3 foil playlists, ~300-400 videos, ~2 days processing time.
+    - Test videos in data/corpus/.tmp/: 1_pm8haO-qs.mp4 (NAGANO vs LEE, validated), timed_test.mp4 (LEE vs KIEFER, validated), plus sabre/epee test videos (not validated).
+- **Session log — 2026-09-02 (session 7):**
+  - BUILT: Source manifest updated to foil-only — removed sabre (2025 Seoul) and epee (2025 Bogota) playlists. Also removed 2025 Torino Foil (new overlay) and 2023 Shanghai Foil (no clock). Final: 3 foil playlists.
+  - BUILT: `light_detail` field on Exchange dataclass — tracks per-side light colors (e.g. "red+green", "red+white") through all commit paths (same-frame both, lookahead both, off-target square both, pending touch). Previously collapsed to just "both".
+  - BUILT: Two-phase corpus acquisition pipeline — `--enumerate` builds video_queue.yaml from playlists (one-time), then default mode processes from queue without hitting playlist API. Avoids rate limits during multi-day acquisition.
+  - BUILT: Retry with exponential backoff in download_video() — 5 retries, 30s→600s backoff on HTTP 429. Also added `--sleep-interval 5 --max-sleep-interval 15` to yt-dlp calls.
+  - BUILT: Cookie support via `--cookies chrome` flag on acquire_corpus.py and secondary_test.py — passes `--cookies-from-browser` to yt-dlp for higher rate limits as authenticated user.
+  - BUILT: Secondary test script (scripts/secondary_test.py) — downloads one video, detects all exchanges, selects N diverse clips via round-robin across categories, trims clips, writes annotation-tool-compatible verify YAML.
+  - BUILT: Sabre clock bypass — `exchange_filter.py` skips clock_is_running() check for weapon="sabre". `detect_exchanges()` accepts weapon parameter and skips has_clock() gate for sabre. Sabre doesn't use the bout clock.
+  - BUILT: `--weapon` flag on secondary_test.py — passes weapon to both detect_exchanges and assess_exchange instead of hardcoding "foil".
+  - BUG: Secondary test verify YAML used flat list format (list of dicts) but annotation tool expects `{clips_dir, clips}` dict format. Fixed by restructuring output to match existing verify YAML convention.
+  - BUG: YouTube rate limited after playlist enumeration — HTTP 429 on subsequent video downloads. Root cause: sequential playlist enum + download hits anonymous rate limits. Fixed: two-phase pipeline + cookie support + retry backoff.
+  - BUG: Sabre video (KATONA vs POPOVA, 2025 Seoul) had 22/25 exchanges rejected as clock_paused. Root cause: sabre doesn't use the bout clock — it stays paused between touches. Clock detection was correct; the rejection logic was wrong for sabre. Fixed: skip clock check for weapon="sabre".
+  - BUG: is_old_overlay() rejected sabre/epee videos because it required B>R (blue-dominant bar). Sabre/epee FencingVision overlays have neutral bars (R≈B). Temporarily loosened to brightness-only (<165), then reverted to B>R after deciding to go foil-only.
+  - BUG: 2024 Tunisia sabre video (brightness 160.6) barely exceeded the 160 threshold even after removing B>R check. Bumped to 165, then reverted when going foil-only.
+  - BUG: 2022 Padova sabre video was 640x360 (not 720p) — overlay positions completely wrong at this resolution. Pre-2023 FencingVision videos may have non-standard resolutions.
+  - DECISION: Manifest narrowed to foil-only for P0/P1. FencingVision uses different overlay bar colors by weapon: foil is blue-dominant (B-R=+45 to +54), sabre is neutral (B-R≈0), epee is neutral (B-R≈+2). Sabre/epee overlay detection deferred to P3/P7.
+  - DECISION: Restored original is_old_overlay() with B>R check. The brightness-only gate (which was tried to accommodate sabre) would let through new-overlay sabre/epee videos that aren't actually supported.
+  - DECISION: Kept sabre clock bypass code (exchange_filter + detect_exchanges) even though manifest is foil-only. This code is correct and will be needed for P3/P7 sabre work.
+  - LEARNED: FencingVision overlay bar color varies by weapon, not just by era. Foil = dark blue (brightness ~139-150, B>>R). Sabre = neutral (brightness ~121-154, B≈R). Epee = neutral grey (brightness ~159, B≈R). The old/new overlay distinction is only clean for foil.
+  - LEARNED: FencingVision sabre videos from 2022 and earlier are 360p, not 720p. The overlay layout at 360p is different from 720p — proportional scaling doesn't work because the overlay itself may be structured differently.
+  - LEARNED: Sabre bout clock stays paused between touches. This is fundamental to sabre timing — the clock only runs during the action, and it's operated by the referee, not continuously. Every sabre exchange will read as "clock_paused" if checked.
+  - LEARNED: YouTube rate limits are aggressive for anonymous access. Playlist enumeration + sequential downloads trigger 429s quickly. Browser cookies significantly help but chrome keychain access produces warnings. The `--remote-components ejs:github` flag may be needed for some downloads.
+  - LEARNED: Foil secondary test (NAGANO vs LEE, 2024 Torino, 26 exchanges): all light_detail values were "red" (single left), "green" (single right), or "red+green" (double valid). No "red+white" or "white+green" (valid+off-target) appeared — off-target doubles are uncommon in a single bout.
+  - DEFERRED: Sabre/epee overlay detection — needs separate work to handle non-blue bar colors and potentially different touch indicator positions. Target: P3/P7.
+  - DEFERRED: Corpus acquisition start — manifest is ready, pipeline is validated, but user wants to complete secondary testing first.
+  - DEFERRED: Faculty sponsor email.
+  - DEFERRED: Epee clip review — 10 clips extracted from TULEN vs KURBANOV (2025 Bogota) but not manually verified. Epee overlay may have same detection issues as sabre.
 - **Session log — 2026-09-01 (session 6):**
   - BUILT: `has_clock()` gate in score_tracker.py — checks clock region brightness (>200 = no clock) and OCR readability. Rejects videos that can't support blade test detection.
   - BUILT: Clock gate added to extract_exchanges.py — videos without a visible clock are skipped at pipeline entry alongside the overlay check.
