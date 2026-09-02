@@ -27,12 +27,23 @@ channels:
         F: women
       round_codes: ["T64", "T32", "T16", "T08", "Pool"]
     playlists:
-      # --- FOIL (5 playlists, ~586 videos, ~58%) ---
+      # Foil only for P0/P1. Sabre and epee deferred to P3/P7 — FencingVision
+      # uses a different (non-blue) overlay for sabre/epee that needs separate
+      # detection work.
+      #
+      # Only playlists with old (dark blue) overlay AND visible clock:
+      # Excluded:
+      #   - 2025 Torino Foil (new grey overlay)
+      #   - 2023 Shanghai Foil (old overlay but no clock — can't detect blade tests)
+      #   - All sabre playlists (different overlay color, not blue-dominant)
+      #   - All epee playlists (different overlay color, not blue-dominant)
+      #
+      # 2025 Shanghai Foil is mixed overlay — the is_old_overlay() gate rejects
+      # individual videos that use the new overlay.
+
+      # --- FOIL (3 playlists) ---
       - name: "2025 Shanghai Foil Grand Prix"
         url: "https://www.youtube.com/playlist?list=PL_pQQho0KExxUCEFLJk-CZwtwUBllOEFO"
-        weapon: foil
-      - name: "2025 Torino Foil Grand Prix"
-        url: "https://www.youtube.com/playlist?list=PL_pQQho0KExxpUJ5bKDjIBYXRea-BybEB"
         weapon: foil
       - name: "2024 Shanghai Foil Grand Prix"
         url: "https://www.youtube.com/playlist?list=PL_pQQho0KExyI_55Y8J89niiHyKn-f_nM"
@@ -40,20 +51,3 @@ channels:
       - name: "2024 Torino Foil Grand Prix"
         url: "https://www.youtube.com/playlist?list=PL_pQQho0KExyRZRPRLvfkuSqV0073VuUq"
         weapon: foil
-      - name: "2023 Shanghai Foil Grand Prix"
-        url: "https://www.youtube.com/playlist?list=PL_pQQho0KExyflbl2ymdAPRNqIdve4iBk"
-        weapon: foil
-      # --- SABRE (2 playlists, ~190 videos, ~19%) ---
-      - name: "2025 Seoul Sabre Grand Prix"
-        url: "https://www.youtube.com/playlist?list=PL_pQQho0KExzoSuflHpPXjOKeIO0z_day"
-        weapon: sabre
-      - name: "2025 Plovdiv Men Sabre World Cup"
-        url: "https://www.youtube.com/playlist?list=PL_pQQho0KExxUgUc1e0HQLlY601QOvEyr"
-        weapon: sabre
-      # --- EPEE (2 playlists, ~241 videos, ~24%) ---
-      - name: "2025 Bogota Epee Grand Prix"
-        url: "https://www.youtube.com/playlist?list=PL_pQQho0KExzEf7OBcwUoJd6kVqhsvZtQ"
-        weapon: epee
-      - name: "2025 Budapest Epee Grand Prix"
-        url: "https://www.youtube.com/playlist?list=PL_pQQho0KExxz9R4YLeLympMhVQ7ZkGeo"
-        weapon: epee

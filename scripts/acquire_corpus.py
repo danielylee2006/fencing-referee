@@ -1,10 +1,23 @@
 """S0 corpus acquisition — download, detect, assess, trim, label.
 
+Two-phase pipeline to avoid YouTube rate limits:
+
+  Phase 1 — Enumerate (fast, one-time):
+    uv run python scripts/acquire_corpus.py --enumerate
+    Hits YouTube to list all videos in all playlists, saves to
+    data/manifests/video_queue.yaml. Run once, retry if rate-limited.
+
+  Phase 2 — Process (slow, resumable, days-long):
+    uv run python scripts/acquire_corpus.py
+    Reads from the queue, downloads/processes one video at a time.
+    No playlist enumeration — only individual video downloads.
+    Retries with exponential backoff on rate limits.
+
 Pipeline per video:
 1. Download full bout video (temporary)
 2. Run exchange detection (touch lights in FencingVision overlay)
-3. Trim each exchange to a clip
-4. Assess quality: score change detection, clock check, label assignment
+3. Assess quality: score change detection, clock check, label assignment
+4. Trim each exchange to a clip
 5. Reject blade tests, flag quality issues, keep good exchanges
 6. Delete the full video
 
@@ -14,9 +27,11 @@ A manifest tracks all processed videos and their exchanges with labels.
 Resumable: skips videos already processed. Safe to interrupt and restart.
 
 Usage:
-    uv run python scripts/acquire_corpus.py
-    uv run python scripts/acquire_corpus.py --dry-run     # list videos without downloading
-    uv run python scripts/acquire_corpus.py --playlist 0   # process only the first playlist
+    uv run python scripts/acquire_corpus.py --enumerate          # phase 1: build queue
+    uv run python scripts/acquire_corpus.py                      # phase 2: process queue
+    uv run python scripts/acquire_corpus.py --dry-run            # list pending videos
+    uv run python scripts/acquire_corpus.py --playlist 0         # enumerate only first playlist
+    uv run python scripts/acquire_corpus.py --cookies chrome     # use browser cookies
 """
 
 from __future__ import annotations
@@ -26,6 +41,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -42,9 +58,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from a1.apparatus.exchange_filter import assess_exchange
 
 MANIFEST_PATH = Path("data/manifests/source_channels.yaml")
+VIDEO_QUEUE_PATH = Path("data/manifests/video_queue.yaml")
 CLIPS_DIR = Path("data/corpus/clips")
 TEMP_DIR = Path("data/corpus/.tmp")
 CORPUS_MANIFEST = Path("data/manifests/corpus_manifest.yaml")
+
+# Retry configuration
+MAX_RETRIES = 5
+INITIAL_BACKOFF_S = 30  # first retry after 30s
+MAX_BACKOFF_S = 600  # cap at 10 minutes
 
 # Videos with these patterns in the title are excluded (case-insensitive)
 EXCLUDE_PATTERNS = [
@@ -75,6 +97,9 @@ TITLE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Cookie browser name (set via --cookies flag)
+_cookie_browser: str | None = None
+
 
 def parse_title(title: str) -> dict[str, str] | None:
     """Extract metadata from a FencingVision video title."""
@@ -99,10 +124,17 @@ def parse_title(title: str) -> dict[str, str] | None:
     }
 
 
+def _yt_dlp_base_cmd() -> list[str]:
+    """Base yt-dlp command with cookie support if configured."""
+    cmd = ["yt-dlp"]
+    if _cookie_browser:
+        cmd.extend(["--cookies-from-browser", _cookie_browser])
+    return cmd
+
+
 def enumerate_playlist(url: str) -> list[dict[str, str]]:
     """List all videos in a YouTube playlist via yt-dlp."""
-    cmd = [
-        "yt-dlp",
+    cmd = _yt_dlp_base_cmd() + [
         "--flat-playlist",
         "--print",
         '{"id": "%(id)s", "title": "%(title)s", "url": "%(url)s", "duration": "%(duration)s"}',
@@ -126,15 +158,17 @@ def enumerate_playlist(url: str) -> list[dict[str, str]]:
 
 
 def download_video(video_id: str, url: str) -> Path | None:
-    """Download a video to a temp directory. Returns the path or None on failure."""
+    """Download a video with retry and exponential backoff.
+
+    Returns the path or None after all retries exhausted.
+    """
     out_path = TEMP_DIR / f"{video_id}.mp4"
     if out_path.exists():
         return out_path
 
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
-    cmd = [
-        "yt-dlp",
+    cmd = _yt_dlp_base_cmd() + [
         "-f",
         "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]",
         "--merge-output-format",
@@ -144,15 +178,32 @@ def download_video(video_id: str, url: str) -> Path | None:
         "--no-playlist",
         "--quiet",
         "--progress",
+        "--sleep-interval", "5",
+        "--max-sleep-interval", "15",
         url,
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-    if result.returncode != 0:
-        print(f"    download FAILED: {result.stderr[:200]}", file=sys.stderr)
-        out_path.unlink(missing_ok=True)
-        return None
 
-    return out_path
+    backoff = INITIAL_BACKOFF_S
+    for attempt in range(1, MAX_RETRIES + 1):
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        if result.returncode == 0 and out_path.exists():
+            return out_path
+
+        stderr = result.stderr or ""
+        is_rate_limit = "429" in stderr or "Too Many Requests" in stderr
+
+        if not is_rate_limit or attempt == MAX_RETRIES:
+            print(f"    download FAILED (attempt {attempt}/{MAX_RETRIES}): "
+                  f"{stderr[:200]}", file=sys.stderr)
+            out_path.unlink(missing_ok=True)
+            return None
+
+        print(f"    rate limited, retrying in {backoff}s "
+              f"(attempt {attempt}/{MAX_RETRIES})...")
+        time.sleep(backoff)
+        backoff = min(backoff * 2, MAX_BACKOFF_S)
+
+    return None
 
 
 def trim_clip(source: Path, start_s: float, duration_s: float, out_path: Path) -> bool:
@@ -210,7 +261,7 @@ def process_video(
     print(f"    downloaded ({size_mb:.0f} MB), detecting touches...")
 
     # Detect exchanges via touch light detection
-    exchanges = detect_exchanges(str(video_path))
+    exchanges = detect_exchanges(str(video_path), weapon=weapon)
     if not exchanges:
         print(f"    no exchanges detected, deleting")
         video_path.unlink(missing_ok=True)
@@ -292,6 +343,7 @@ def process_video(
                 "clip_start_s": round(clip_start_s, 2),
                 "clip_end_s": round(clip_end_s, 2),
                 "light_side": ex.side,
+                "light_detail": ex.light_detail,
                 "label": quality.label,
                 "weapon": weapon,
                 "size_mb": round(clip_size, 1),
@@ -358,11 +410,211 @@ def save_manifest(data: dict) -> None:
         yaml.dump(out, f, default_flow_style=False, sort_keys=False, width=120)
 
 
+# --- Phase 1: Enumerate ---
+
+def enumerate_all(playlists: list[dict]) -> None:
+    """Enumerate all playlists and save to video_queue.yaml."""
+    queue: list[dict] = []
+    existing_ids: set[str] = set()
+
+    # Load existing queue if present (for incremental enumeration)
+    if VIDEO_QUEUE_PATH.exists():
+        with open(VIDEO_QUEUE_PATH) as f:
+            existing = yaml.safe_load(f) or {}
+        for v in existing.get("videos", []):
+            existing_ids.add(v["video_id"])
+
+    for i, pl in enumerate(playlists):
+        pl_name = pl["name"]
+        pl_weapon = pl["weapon"]
+        print(f"\n[{i + 1}/{len(playlists)}] {pl_name} ({pl_weapon})")
+
+        videos = enumerate_playlist(pl["url"])
+        if not videos:
+            print(f"  FAILED — rate limited or empty. Re-run --enumerate to retry.")
+            continue
+
+        print(f"  {len(videos)} videos found")
+        added = 0
+        excluded = 0
+
+        for v in videos:
+            vid_id = v["id"]
+            title = v["title"]
+
+            if EXCLUDE_RE.search(title):
+                excluded += 1
+                continue
+
+            if vid_id in existing_ids:
+                continue
+
+            meta = parse_title(title)
+            queue.append({
+                "video_id": vid_id,
+                "title": title,
+                "url": f"https://www.youtube.com/watch?v={vid_id}",
+                "playlist": pl_name,
+                "weapon": meta["weapon"] if meta else pl_weapon,
+                "round": meta["round"] if meta else "",
+                "gender": meta["gender"] if meta else "",
+                "athlete_1": meta["athlete_1"] if meta else "",
+                "athlete_1_country": meta["athlete_1_country"] if meta else "",
+                "athlete_2": meta["athlete_2"] if meta else "",
+                "athlete_2_country": meta["athlete_2_country"] if meta else "",
+                "year": meta["year"] if meta else "",
+                "city": meta["city"] if meta else "",
+                "parsed": meta is not None,
+            })
+            existing_ids.add(vid_id)
+            added += 1
+
+        print(f"  {added} added, {excluded} excluded (podium/final/semi/team)")
+
+    # Merge with existing queue
+    all_videos = []
+    if VIDEO_QUEUE_PATH.exists():
+        with open(VIDEO_QUEUE_PATH) as f:
+            existing = yaml.safe_load(f) or {}
+        all_videos = existing.get("videos", [])
+    all_videos.extend(queue)
+
+    out = {
+        "generated": datetime.now(timezone.utc).isoformat(),
+        "total": len(all_videos),
+        "videos": all_videos,
+    }
+    VIDEO_QUEUE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(VIDEO_QUEUE_PATH, "w") as f:
+        yaml.dump(out, f, default_flow_style=False, sort_keys=False, width=120)
+
+    print(f"\n{'=' * 60}")
+    print(f"Queue saved: {len(all_videos)} videos in {VIDEO_QUEUE_PATH}")
+    print(f"New this run: {len(queue)}")
+    print(f"\nNext: run without --enumerate to start processing.")
+
+
+# --- Phase 2: Process from queue ---
+
+def process_from_queue(dry_run: bool = False) -> None:
+    """Process videos from the queue file. No playlist enumeration needed."""
+    if not VIDEO_QUEUE_PATH.exists():
+        print(f"No video queue found at {VIDEO_QUEUE_PATH}", file=sys.stderr)
+        print(f"Run with --enumerate first to build the queue.", file=sys.stderr)
+        sys.exit(1)
+
+    with open(VIDEO_QUEUE_PATH) as f:
+        queue_data = yaml.safe_load(f) or {}
+    queue = queue_data.get("videos", [])
+
+    if not queue:
+        print("Queue is empty.")
+        return
+
+    # Load existing manifest for resumability
+    manifest = load_existing_manifest()
+
+    total = len(queue)
+    pending = 0
+    cached = 0
+    processed = 0
+    failed = 0
+    total_exchanges = 0
+
+    for i, v in enumerate(queue):
+        vid_id = v["video_id"]
+        title = v["title"]
+        weapon = v["weapon"]
+
+        # Skip already-processed videos
+        if vid_id in manifest["videos"] and manifest["videos"][vid_id].get("processed", False):
+            cached += 1
+            continue
+
+        pending += 1
+
+        if dry_run:
+            parsed = "OK" if v.get("parsed", False) else "NO_PARSE"
+            print(f"  [PENDING] [{parsed}] {title}")
+            continue
+
+        print(f"\n  [{cached + processed + failed + 1}/{total}] {title[:70]}")
+
+        meta = {
+            "weapon": v["weapon"],
+            "round": v.get("round", ""),
+            "gender": v.get("gender", ""),
+            "athlete_1": v.get("athlete_1", ""),
+            "athlete_1_country": v.get("athlete_1_country", ""),
+            "athlete_2": v.get("athlete_2", ""),
+            "athlete_2_country": v.get("athlete_2_country", ""),
+            "year": v.get("year", ""),
+            "city": v.get("city", ""),
+        }
+
+        exchange_entries = process_video(vid_id, v["url"], meta, weapon)
+
+        # Update manifest
+        video_entry = {
+            "video_id": vid_id,
+            "title": title,
+            "url": v["url"],
+            "playlist": v.get("playlist", ""),
+            **meta,
+            "processed": True,
+            "exchange_count": len(exchange_entries),
+        }
+
+        manifest["videos"][vid_id] = video_entry
+        manifest["exchanges"].extend(exchange_entries)
+
+        if exchange_entries:
+            processed += 1
+            total_exchanges += len(exchange_entries)
+        else:
+            failed += 1
+
+        # Save after each video for resumability
+        save_manifest(manifest)
+
+    if dry_run:
+        print(f"\n{'=' * 60}")
+        print(f"Total in queue: {total}")
+        print(f"Already processed: {cached}")
+        print(f"Pending: {pending}")
+        return
+
+    # Final save
+    save_manifest(manifest)
+
+    print(f"\n{'=' * 60}")
+    print(f"Queue:       {total} videos")
+    print(f"Cached:      {cached} (already processed)")
+    print(f"Processed:   {processed}")
+    print(f"Failed:      {failed}")
+    print(f"Exchanges:   {total_exchanges} new clips")
+    print(f"Manifest:    {len(manifest['videos'])} videos, "
+          f"{len(manifest['exchanges'])} exchanges in {CORPUS_MANIFEST}")
+
+    if CLIPS_DIR.exists():
+        corpus_size = sum(f.stat().st_size for f in CLIPS_DIR.glob("*.mp4")) / (1024 * 1024 * 1024)
+        print(f"Disk usage:  {corpus_size:.1f} GB in {CLIPS_DIR}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="S0 corpus acquisition")
-    parser.add_argument("--dry-run", action="store_true", help="List videos without downloading")
-    parser.add_argument("--playlist", type=int, default=None, help="Only process this playlist index")
+    parser.add_argument("--enumerate", action="store_true",
+                        help="Phase 1: enumerate playlists and build video queue")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="List pending videos without downloading")
+    parser.add_argument("--playlist", type=int, default=None,
+                        help="Only process this playlist index (for --enumerate)")
+    parser.add_argument("--cookies", type=str, default=None,
+                        help="Browser to read cookies from (e.g. chrome, firefox)")
     args = parser.parse_args()
+
+    global _cookie_browser
+    _cookie_browser = args.cookies
 
     if not MANIFEST_PATH.exists():
         print(f"Source manifest not found: {MANIFEST_PATH}", file=sys.stderr)
@@ -377,99 +629,10 @@ def main() -> None:
     if args.playlist is not None:
         playlists = [playlists[args.playlist]]
 
-    # Load existing manifest for resumability
-    manifest = load_existing_manifest()
-
-    total_enumerated = 0
-    total_excluded = 0
-    total_processed = 0
-    total_cached = 0
-    total_failed = 0
-    total_exchanges = 0
-
-    for i, pl in enumerate(playlists):
-        pl_name = pl["name"]
-        pl_weapon = pl["weapon"]
-        print(f"\n[{i + 1}/{len(playlists)}] {pl_name} ({pl_weapon})")
-
-        videos = enumerate_playlist(pl["url"])
-        print(f"  {len(videos)} videos found")
-
-        for v in videos:
-            vid_id = v["id"]
-            title = v["title"]
-            total_enumerated += 1
-
-            # Filter excluded titles
-            if EXCLUDE_RE.search(title):
-                total_excluded += 1
-                continue
-
-            # Skip already-processed videos
-            if vid_id in manifest["videos"] and manifest["videos"][vid_id].get("processed", False):
-                total_cached += 1
-                continue
-
-            # Parse metadata from title
-            meta = parse_title(title)
-
-            if args.dry_run:
-                parsed = "OK" if meta else "NO_PARSE"
-                print(f"  [PENDING] [{parsed}] {title}")
-                continue
-
-            print(f"  [{total_processed + total_cached + 1}] {title[:70]}")
-
-            # Process: download → detect → trim → delete
-            exchange_entries = process_video(vid_id, v.get("url", f"https://www.youtube.com/watch?v={vid_id}"), meta, pl_weapon)
-
-            # Update manifest
-            video_entry = {
-                "video_id": vid_id,
-                "title": title,
-                "url": f"https://www.youtube.com/watch?v={vid_id}",
-                "playlist": pl_name,
-                "weapon": meta["weapon"] if meta else pl_weapon,
-                "round": meta["round"] if meta else "",
-                "gender": meta["gender"] if meta else "",
-                "athlete_1": meta["athlete_1"] if meta else "",
-                "athlete_1_country": meta["athlete_1_country"] if meta else "",
-                "athlete_2": meta["athlete_2"] if meta else "",
-                "athlete_2_country": meta["athlete_2_country"] if meta else "",
-                "year": meta["year"] if meta else "",
-                "city": meta["city"] if meta else "",
-                "processed": True,
-                "exchange_count": len(exchange_entries),
-            }
-
-            manifest["videos"][vid_id] = video_entry
-            manifest["exchanges"].extend(exchange_entries)
-
-            if exchange_entries:
-                total_processed += 1
-                total_exchanges += len(exchange_entries)
-            else:
-                total_failed += 1
-
-            # Save after each video for resumability
-            save_manifest(manifest)
-
-    # Final save
-    if not args.dry_run:
-        save_manifest(manifest)
-
-    print(f"\n{'=' * 60}")
-    print(f"Enumerated:  {total_enumerated}")
-    print(f"Excluded:    {total_excluded} (podium/final/semi/team)")
-    print(f"Cached:      {total_cached} (already processed)")
-    print(f"Processed:   {total_processed}")
-    print(f"Failed:      {total_failed}")
-    print(f"Exchanges:   {total_exchanges} new clips")
-    print(f"Manifest:    {len(manifest['videos'])} videos, {len(manifest['exchanges'])} exchanges in {CORPUS_MANIFEST}")
-
-    if not args.dry_run and CLIPS_DIR.exists():
-        corpus_size = sum(f.stat().st_size for f in CLIPS_DIR.glob("*.mp4")) / (1024 * 1024 * 1024)
-        print(f"Disk usage:  {corpus_size:.1f} GB in {CLIPS_DIR}")
+    if args.enumerate:
+        enumerate_all(playlists)
+    else:
+        process_from_queue(dry_run=args.dry_run)
 
 
 if __name__ == "__main__":

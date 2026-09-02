@@ -53,9 +53,10 @@ class Exchange:
     clip_start_s: float
     clip_end_s: float
     side: str  # "left", "right", "both", or "off_target"
+    light_detail: str  # e.g. "red", "green", "white", "red+green", "red+white"
 
 
-def detect_exchanges(video_path: str) -> list[Exchange]:
+def detect_exchanges(video_path: str, weapon: str = "foil") -> list[Exchange]:
     """Scan a video for exchanges using the FencingVision overlay.
 
     Detects the colored touch-indicator line above the overlay bar,
@@ -111,6 +112,16 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
         white_pct = float(np.sum(bright & neutral)) / total
         return red_pct, green_pct, white_pct
 
+    def _light_detail(side: str, lc: str, rc: str) -> str:
+        """Build a light_detail string from side and per-side colors."""
+        if side == "both":
+            return f"{lc or 'red'}+{rc or 'green'}"
+        if side == "left":
+            return lc or "red"
+        if side == "right":
+            return rc or "green"
+        return ""
+
     for i, frame in enumerate(container.decode(video=0)):
         img = frame.to_ndarray(format="rgb24")
         h, w = img.shape[:2]
@@ -123,7 +134,9 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
                 print("Skipping: unsupported overlay (not old FencingVision)")
                 container.close()
                 return []
-            if not has_clock(img):
+            # Sabre doesn't use the bout clock — skip the clock gate.
+            # For foil/epee, a missing clock means we can't detect blade tests.
+            if weapon != "sabre" and not has_clock(img):
                 print("Skipping: no clock in overlay (cannot detect blade tests)")
                 container.close()
                 return []
@@ -180,8 +193,10 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
                 left_white_delta = left_white - pt["baseline_left_white"]
                 if pt["side"] == "left" and (right_green > 0.15 or right_white_delta > 0.12):
                     pt["side"] = "both"
+                    pt["right_color"] = "green" if right_green > 0.15 else "white"
                 elif pt["side"] == "right" and (left_red > 0.15 or left_white_delta > 0.12):
                     pt["side"] = "both"
+                    pt["left_color"] = "red" if left_red > 0.15 else "white"
 
                 # Off-target square: small white square at y=670-700, below the
                 # touch strip. Too small to trigger the 8% strip threshold.
@@ -190,9 +205,11 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
                     if pt["side"] == "left":
                         if cur_right_offtarget - pt["baseline_right_offtarget"] > 0.03:
                             pt["side"] = "both"
+                            pt["right_color"] = "white"
                     elif pt["side"] == "right":
                         if cur_left_offtarget - pt["baseline_left_offtarget"] > 0.03:
                             pt["side"] = "both"
+                            pt["left_color"] = "white"
                 pt["remaining"] -= 1
 
                 if pt["remaining"] > 0 and pt["side"] != "both":
@@ -214,6 +231,7 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
                     clip_start_s=pt["clip_start"],
                     clip_end_s=pt["clip_end"],
                     side=pt["side"],
+                    light_detail=_light_detail(pt["side"], pt["left_color"], pt["right_color"]),
                 )
             )
             cooldown_until = pt["onset_frame"] + int(6 * fps)
@@ -294,6 +312,7 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
                         clip_start_s=clip_start,
                         clip_end_s=clip_end,
                         side="both",
+                        light_detail=_light_detail("both", left_color, right_color),
                     )
                 )
                 cooldown_until = i + int(6 * fps)
@@ -308,8 +327,10 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
                 # produces a sharp delta (>0.03) from the previous frame.
                 if touch_side == "left" and cur_right_offtarget - prev_right_offtarget > 0.03:
                     touch_side = "both"
+                    right_color = "white"
                 elif touch_side == "right" and cur_left_offtarget - prev_left_offtarget > 0.03:
                     touch_side = "both"
+                    left_color = "white"
                 if touch_side == "both":
                     exchanges.append(
                         Exchange(
@@ -320,6 +341,7 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
                             clip_start_s=clip_start,
                             clip_end_s=clip_end,
                             side="both",
+                            light_detail=_light_detail("both", left_color, right_color),
                         )
                     )
                     cooldown_until = i + int(6 * fps)
@@ -334,6 +356,8 @@ def detect_exchanges(video_path: str) -> list[Exchange]:
                 pending_touch = {
                     "onset_frame": i,
                     "side": touch_side,
+                    "left_color": left_color,
+                    "right_color": right_color,
                     "light_s": light_s,
                     "clip_start": clip_start,
                     "clip_end": clip_end,

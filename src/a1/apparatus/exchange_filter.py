@@ -76,16 +76,19 @@ def assess_exchange(
     regions = OverlayRegions.from_frame_size(h, w)
 
     # --- Step 1: Check clock before touch ---
-    clock_start = max(0, touch_frame - 50)
-    clock_end = touch_frame
-    result.clock_running_before = clock_is_running(
-        frames, regions, clock_start, clock_end,
-    )
+    # Sabre does not use a running bout clock between touches — the clock
+    # stays paused. Skip the clock check entirely for sabre.
+    if weapon != "sabre":
+        clock_start = max(0, touch_frame - 50)
+        clock_end = touch_frame
+        result.clock_running_before = clock_is_running(
+            frames, regions, clock_start, clock_end,
+        )
 
-    if not result.clock_running_before:
-        result.reject = True
-        result.reject_reason = "clock_paused"
-        return result
+        if not result.clock_running_before:
+            result.reject = True
+            result.reject_reason = "clock_paused"
+            return result
 
     # --- Step 2: Detect score change via OCR ---
     # Skip the clock check inside detect_score_change since we already

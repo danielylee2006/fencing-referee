@@ -28,7 +28,7 @@ import numpy as np
 
 
 def is_old_overlay(frame: np.ndarray) -> bool:
-    """Check if a frame uses the supported old (dark blue) FencingVision overlay.
+    """Check if a frame uses the supported old FencingVision overlay.
 
     The old overlay has a dark blue bar (brightness ~149, B > R).
     The unsupported new overlay has a neutral grey bar (brightness ~176).
